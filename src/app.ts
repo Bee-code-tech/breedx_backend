@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import env from './config/env';
 
 // Route imports
+import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
 
 // Middleware imports
@@ -29,6 +30,7 @@ app.get('/health', (_req, res) => {
 });
 
 // ── Routes ─────────────────────────────────────────────────────────────────────
+app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 
 // ── Global error handler (must be last) ───────────────────────────────────────
