@@ -1,0 +1,50 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout code
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Setup Node
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. Type-check
+      - name: Type check
+        run: npm run type-check
+
+      # 5. Build
+      - name: Build
+        run: npm run build
+
+      # 6. SSH into server, pull latest, rebuild, restart PM2
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /var/www/lodgr_backend
+            git pull origin main
+            npm ci --ignore-scripts
+            npm run build
+            pm2 restart lodgr --update-env
+            pm2 save
