@@ -12,18 +12,35 @@ export const register = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { name, email, password } = req.body;
+    const { 
+      fullname, 
+      username, 
+      email, 
+      password,
+      gender,
+      religion,
+      phone_number,
+      level,
+      institution,
+      faculty,
+      department,
+      role
+    } = req.body;
 
     // Validate required fields
-    if (!name || !email || !password) {
-      sendError(res, 'Name, email and password are required', 400);
+    if (!fullname || !username || !email || !password) {
+      sendError(res, 'Fullname, username, email and password are required', 400);
       return;
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    // Check if user already exists (email or username)
+    const existingUser = await User.findOne({ 
+      $or: [{ email }, { username }] 
+    });
+    
     if (existingUser) {
-      sendError(res, 'Email is already registered', 409);
+      const field = existingUser.email === email ? 'Email' : 'Username';
+      sendError(res, `${field} is already registered`, 409);
       return;
     }
 
@@ -32,9 +49,18 @@ export const register = async (
 
     // Create user
     const user = await User.create({
-      name,
+      fullname,
+      username,
       email,
       password: hashedPassword,
+      gender,
+      religion,
+      phone_number,
+      level,
+      institution,
+      faculty,
+      department,
+      role: role || 'student'
     });
 
     // Sign JWT
@@ -50,9 +76,11 @@ export const register = async (
         token,
         user: {
           id: user._id,
-          name: user.name,
+          fullname: user.fullname,
+          username: user.username,
           email: user.email,
           role: user.role,
+          shops: user.shops,
         },
       },
       'Registration successful',

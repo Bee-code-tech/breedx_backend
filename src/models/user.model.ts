@@ -3,9 +3,15 @@ import { IUser } from '@interfaces/user';
 
 const userSchema = new Schema<IUser>(
   {
-    name: {
+    fullname: {
       type: String,
-      required: [true, 'Name is required'],
+      required: [true, 'Fullname is required'],
+      trim: true,
+    },
+    username: {
+      type: String,
+      required: [true, 'Username is required'],
+      unique: true,
       trim: true,
     },
     email: {
@@ -18,13 +24,41 @@ const userSchema = new Schema<IUser>(
     password: {
       type: String,
       required: [true, 'Password is required'],
-      select: false, 
+      select: false,
     },
+    gender: {
+      type: String,
+      enum: ['male', 'female', 'other'],
+    },
+    religion: String,
+    phone_number: String,
+    level: String,
+    institution: String,
+    faculty: String,
+    department: String,
     role: {
       type: String,
-      enum: ['user', 'admin'],
-      default: 'user',
+      enum: [
+        'student',
+        'student_provider',
+        'service_provider',
+        'landlord',
+        'hostel_rep',
+        'campus_ambassador',
+        'admin',
+      ],
+      default: 'student',
     },
+    wallet: {
+      type: Schema.Types.ObjectId,
+      ref: 'Wallet',
+    },
+    shops: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'Shop',
+      },
+    ],
   },
   {
     timestamps: true,
