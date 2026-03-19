@@ -1,15 +1,5 @@
-import { Schema, model, Document } from 'mongoose';
-
-export type UserRole = 'user' | 'admin';
-
-export interface IUser extends Document {
-  name: string;
-  email: string;
-  password: string;
-  role: UserRole;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { Schema, model } from 'mongoose';
+import { IUser } from '@interfaces/user';
 
 const userSchema = new Schema<IUser>(
   {
@@ -28,7 +18,7 @@ const userSchema = new Schema<IUser>(
     password: {
       type: String,
       required: [true, 'Password is required'],
-      select: false, // never returned in queries by default
+      select: false, 
     },
     role: {
       type: String,
