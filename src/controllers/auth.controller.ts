@@ -81,6 +81,7 @@ export const register = async (
           email: user.email,
           role: user.role,
           shops: user.shops,
+          properties: user.properties,
         },
       },
       'Registration successful',

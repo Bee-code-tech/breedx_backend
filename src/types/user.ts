@@ -24,6 +24,7 @@ export interface IUser extends Document {
   role: UserRole;
   wallet?: Schema.Types.ObjectId;
   shops: Schema.Types.ObjectId[];
+  properties: Schema.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }

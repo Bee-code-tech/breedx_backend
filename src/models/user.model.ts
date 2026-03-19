@@ -59,6 +59,12 @@ const userSchema = new Schema<IUser>(
         ref: 'Shop',
       },
     ],
+    properties: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'Property',
+      },
+    ],
   },
   {
     timestamps: true,
