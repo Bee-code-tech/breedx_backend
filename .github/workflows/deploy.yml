@@ -42,9 +42,11 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            cd ~/lodgr_backend
-            git pull origin main
-            npm ci --ignore-scripts
-            npm run build
-            pm2 restart lodgr --update-env
-            pm2 save
+             export NVM_DIR="$HOME/.nvm"
+             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # Load NVM
+             cd ~/lodgr_backend
+             git pull origin main
+             npm install
+             npm run build
+             pm2 restart lodgr --update-env || pm2 start ecosystem.config.js
+             pm2 save
