@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import User from '../models/user.model';
 import env from '../config/env';
 import { sendSuccess, sendError } from '../utils/response';
+import { generateOTP } from '../utils/otp';
+import { sendOTP } from '../utils/mail';
 
 // POST /api/v1/auth/register
 export const register = async (
@@ -24,16 +26,17 @@ export const register = async (
       institution,
       faculty,
       department,
-      role
+      role,
+      category
     } = req.body;
 
     // Validate required fields
-    if (!fullname || !username || !email || !password) {
-      sendError(res, 'Fullname, username, email and password are required', 400);
+    if (!fullname || !username || !email || !password || !role) {
+      sendError(res, 'Fullname, username, email, password and role are required', 400);
       return;
     }
 
-    // Check if user already exists (email or username)
+    // Check if user already exists
     const existingUser = await User.findOne({ 
       $or: [{ email }, { username }] 
     });
@@ -47,7 +50,11 @@ export const register = async (
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create user
+    // Generate OTP
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+    // Create user (unverified)
     const user = await User.create({
       fullname,
       username,
@@ -60,8 +67,57 @@ export const register = async (
       institution,
       faculty,
       department,
-      role: role || 'student'
+      role,
+      category,
+      otp,
+      otpExpires,
+      isVerified: false
     });
+
+    // Send OTP email
+    await sendOTP(email, otp);
+
+    sendSuccess(
+      res,
+      { email },
+      'Registration successful. Please check your email for verification code.',
+      201
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/v1/auth/verify-otp
+export const verifyOTP = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      sendError(res, 'Email and OTP are required', 400);
+      return;
+    }
+
+    const user = await User.findOne({ 
+      email,
+      otp,
+      otpExpires: { $gt: new Date() }
+    });
+
+    if (!user) {
+      sendError(res, 'Invalid or expired OTP', 400);
+      return;
+    }
+
+    // Mark as verified
+    user.isVerified = true;
+    user.otp = undefined;
+    user.otpExpires = undefined;
+    await user.save();
 
     // Sign JWT
     const token = jwt.sign(
@@ -84,9 +140,49 @@ export const register = async (
           properties: user.properties,
         },
       },
-      'Registration successful',
-      201
+      'Email verified successfully'
     );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/v1/auth/resend-otp
+export const resendOTP = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      sendError(res, 'Email is required', 400);
+      return;
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      sendError(res, 'User not found', 404);
+      return;
+    }
+
+    if (user.isVerified) {
+      sendError(res, 'Email is already verified', 400);
+      return;
+    }
+
+    // Generate new OTP
+    const otp = generateOTP();
+    user.otp = otp;
+    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    // Send OTP email
+    await sendOTP(email, otp);
+
+    sendSuccess(res, null, 'New verification code sent to your email');
   } catch (error) {
     next(error);
   }

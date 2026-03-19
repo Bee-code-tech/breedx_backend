@@ -49,6 +49,22 @@ const userSchema = new Schema<IUser>(
       ],
       default: 'student',
     },
+    category: {
+      type: String,
+      enum: [
+        'Painting', 'Plumbing', 'Electrical', 'Carpentry', 'Cleaning',
+        'Gardening', 'AC Maintenance', 'Pest Control', 'Interior Decorating',
+        'Flooring', 'Roofing', 'Security Systems', 'Solar Installation',
+        'Appliance Repair', 'Masonry', 'Moving Services', 'Waste Management',
+        'Upholstery', 'Laundry', 'Gas Refill'
+      ],
+    },
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    otp: String,
+    otpExpires: Date,
     wallet: {
       type: Schema.Types.ObjectId,
       ref: 'Wallet',
