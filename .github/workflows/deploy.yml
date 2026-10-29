@@ -42,18 +42,13 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-             echo "--- DIAGNOSTICS ---"
-             whoami
-             pwd
              export NVM_DIR="$HOME/.nvm"
              [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
              export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-             echo "Node path: $(which node)"
-             echo "PM2 path: $(which pm2)"
-             
-             cd ~/lodgr_backend || (echo "FAILED: Directory not found" && exit 1)
-             git pull origin main || (echo "FAILED: Git pull failed" && exit 1)
-             npm install || (echo "FAILED: npm install failed" && exit 1)
-             npm run build || (echo "FAILED: Build failed" && exit 1)
-             pm2 restart lodgr --update-env || pm2 start ecosystem.config.js || (echo "FAILED: PM2 failed" && exit 1)
+             cd ~/hoa_backend
+             git pull origin main
+             npm ci
+             npm run build
+             pm2 restart hoa_backend --update-env || pm2 start ecosystem.config.js
+
              pm2 save
