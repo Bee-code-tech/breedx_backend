@@ -42,13 +42,12 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-             export NVM_DIR="$HOME/.nvm"
-             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-             export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-             cd ~/hoa_backend
-             git pull origin main
-             npm ci
-             npm run build
-             pm2 restart hoa_backend --update-env || pm2 start ecosystem.config.js
-
-             pm2 save
+            set -e
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            cd ~/breedx_backend
+            git pull origin main
+            npm ci
+            npm run build
+            pm2 restart ecosystem.config.js --update-env || pm2 start ecosystem.config.js
+            pm2 save
