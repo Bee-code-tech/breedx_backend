@@ -1,41 +1,23 @@
-import { Document, Schema } from 'mongoose';
+import { Document } from 'mongoose';
 
-export type UserRole = 
-  | 'student' 
-  | 'student_provider' 
-  | 'service_provider' 
-  | 'landlord' 
-  | 'hostel_rep' 
-  | 'campus_ambassador' 
-  | 'admin';
+export type UserRole = 'user' | 'admin';
 
-export type ServiceCategory = 
-  | 'Painting' | 'Plumbing' | 'Electrical' | 'Carpentry' | 'Cleaning' 
-  | 'Gardening' | 'AC Maintenance' | 'Pest Control' | 'Interior Decorating' 
-  | 'Flooring' | 'Roofing' | 'Security Systems' | 'Solar Installation' 
-  | 'Appliance Repair' | 'Masonry' | 'Moving Services' | 'Waste Management' 
-  | 'Upholstery' | 'Laundry' | 'Gas Refill';
+export type AuthProvider = 'local' | 'google';
 
 export interface IUser extends Document {
-  fullname: string;
-  username: string;
+  firstName: string;
+  lastName: string;
   email: string;
-  password: string;
-  gender?: string;
-  religion?: string;
-  phone_number?: string;
-  level?: string;
-  institution?: string;
-  faculty?: string;
-  department?: string;
+  country: string;
+  password?: string;
+  authProvider: AuthProvider;
+  googleId?: string;
   role: UserRole;
-  category?: ServiceCategory;
   isVerified: boolean;
   otp?: string;
   otpExpires?: Date;
-  wallet?: Schema.Types.ObjectId;
-  shops: Schema.Types.ObjectId[];
-  properties: Schema.Types.ObjectId[];
+  otpAttempts: number;
+  deviceSwaps: Date[];
   createdAt: Date;
   updatedAt: Date;
 }

@@ -1,33 +1,40 @@
-import { Request, Response, NextFunction } from 'express';
-import env from '../config/env';
+import { Response, NextFunction } from 'express';
+import Session from '../models/session.model';
+import { AuthRequest } from '../types/auth';
+import { verifyToken } from '../utils/token';
 
 /**
- * Protect routes — verify Bearer JWT.
- * Replace the stub below with real JWT verification (e.g. jsonwebtoken).
+ * Protect routes — verify Bearer access token and its session, then attach it
+ * to req.user. Checking the session means a removed device is cut off at once.
  */
-export const protect = (
-  req: Request,
+export const protect = async (
+  req: AuthRequest,
   res: Response,
   next: NextFunction
-): void => {
-  const authHeader = req.headers.authorization;
+): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, message: 'Unauthorized — no token' });
-    return;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ success: false, message: 'Unauthorized — no token' });
+      return;
+    }
+
+    const payload = verifyToken(authHeader.split(' ')[1], 'access');
+    const session = payload?.sid && (await Session.exists({
+      _id: payload.sid,
+      revokedAt: { $exists: false },
+      expiresAt: { $gt: new Date() },
+    }));
+
+    if (!payload || !session) {
+      res.status(401).json({ success: false, message: 'Unauthorized — invalid or expired token' });
+      return;
+    }
+
+    req.user = payload;
+    next();
+  } catch (error) {
+    next(error);
   }
-
-  const token = authHeader.split(' ')[1];
-
-  // TODO: replace this with real JWT verification using env.JWT_SECRET
-  if (!token) {
-    res.status(401).json({ success: false, message: 'Unauthorized — invalid token' });
-    return;
-  }
-
-  // Attach decoded user to request here once JWT is wired up
-  // (req as any).user = decoded;
-
-  console.log(`[auth] protect middleware - JWT_SECRET exists: ${!!env.JWT_SECRET}`);
-  next();
 };

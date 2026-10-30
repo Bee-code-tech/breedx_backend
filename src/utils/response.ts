@@ -16,10 +16,12 @@ export const sendSuccess = <T>(
 export const sendError = (
   res: Response,
   message = 'Something went wrong',
-  statusCode = 500
+  statusCode = 500,
+  extra: Record<string, unknown> = {}
 ): void => {
   res.status(statusCode).json({
     success: false,
     message,
+    ...extra,
   });
 };

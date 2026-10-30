@@ -3,15 +3,15 @@ import { IUser } from '@interfaces/user';
 
 const userSchema = new Schema<IUser>(
   {
-    fullname: {
+    firstName: {
       type: String,
-      required: [true, 'Fullname is required'],
+      required: [true, 'First name is required'],
       trim: true,
     },
-    username: {
+    lastName: {
       type: String,
-      required: [true, 'Username is required'],
-      unique: true,
+      // Some Google accounts have no last name; /register requires it for manual signups
+      default: '',
       trim: true,
     },
     email: {
@@ -21,66 +21,41 @@ const userSchema = new Schema<IUser>(
       lowercase: true,
       trim: true,
     },
+    country: {
+      type: String,
+      required: [true, 'Country is required'],
+      trim: true,
+    },
+    // Unset until the user completes signup via /auth/set-password
     password: {
       type: String,
-      required: [true, 'Password is required'],
       select: false,
     },
-    gender: {
+    authProvider: {
       type: String,
-      enum: ['male', 'female', 'other'],
+      enum: ['local', 'google'],
+      default: 'local',
     },
-    religion: String,
-    phone_number: String,
-    level: String,
-    institution: String,
-    faculty: String,
-    department: String,
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      select: false,
+    },
     role: {
       type: String,
-      enum: [
-        'student',
-        'student_provider',
-        'service_provider',
-        'landlord',
-        'hostel_rep',
-        'campus_ambassador',
-        'admin',
-      ],
-      default: 'student',
-    },
-    category: {
-      type: String,
-      enum: [
-        'Painting', 'Plumbing', 'Electrical', 'Carpentry', 'Cleaning',
-        'Gardening', 'AC Maintenance', 'Pest Control', 'Interior Decorating',
-        'Flooring', 'Roofing', 'Security Systems', 'Solar Installation',
-        'Appliance Repair', 'Masonry', 'Moving Services', 'Waste Management',
-        'Upholstery', 'Laundry', 'Gas Refill'
-      ],
+      enum: ['user', 'admin'],
+      default: 'user',
     },
     isVerified: {
       type: Boolean,
       default: false,
     },
-    otp: String,
-    otpExpires: Date,
-    wallet: {
-      type: Schema.Types.ObjectId,
-      ref: 'Wallet',
-    },
-    shops: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: 'Shop',
-      },
-    ],
-    properties: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: 'Property',
-      },
-    ],
+    otp: { type: String, select: false },
+    otpExpires: { type: Date, select: false },
+    otpAttempts: { type: Number, default: 0, select: false },
+    // When devices were replaced or removed, for the monthly swap limit
+    deviceSwaps: { type: [Date], default: [], select: false },
   },
   {
     timestamps: true,
