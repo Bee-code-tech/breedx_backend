@@ -104,6 +104,7 @@ Returned by `/set-password`, `/login` and `/me`. Never includes the password or 
 ```json
 {
   "id": "6720f1c2a9b3e4d5f6a7b8c9",
+  "name": "Ada Lovelace",
   "firstName": "Ada",
   "lastName": "Lovelace",
   "email": "ada@example.com",
@@ -111,10 +112,14 @@ Returned by `/set-password`, `/login` and `/me`. Never includes the password or 
   "role": "user",
   "authProvider": "local",
   "isVerified": true,
+  "onboardingStatus": "pending",
+  "academicProfile": {},
+  "learningStyle": {},
   "createdAt": "2026-10-30T09:15:00.000Z"
 }
 ```
 
+- `onboardingStatus` is `pending` or `complete`. See [onboarding.md](onboarding.md).
 - `email` is always stored and returned in lowercase.
 - `role` is `user` or `admin`.
 - `authProvider` is `local` (email & password) or `google`.
@@ -535,14 +540,63 @@ google.accounts.id.renderButton(buttonElement, { theme: 'outline', size: 'large'
 
 ---
 
+### 15. Forgot password
+
+Three steps: request a code, verify it, then set a new password.
+
+```
+POST /forgot-password     { email }
+     │  6-digit code emailed (valid 10 min)
+     ▼
+POST /verify-reset-code   { email, code }
+     │  returns resetToken (valid 15 min)
+     ▼
+POST /reset-password      { resetToken, password }
+     │  all devices signed out
+     ▼
+POST /login
+```
+
+**`POST /forgot-password`**
+
+| Status | When | `message` |
+| --- | --- | --- |
+| `200` | Always, for any valid email | If that email has a BreedX password, we sent a reset code to it |
+| `400` | Email format invalid | Please provide a valid email address |
+| `429` | 10 requests in 15 minutes from one IP | Too many attempts. Please try again later |
+
+The answer is the same whether or not the account exists, so show the code screen every time. No email is sent to accounts with no password, such as Google-only accounts, or within 60 seconds of the last code.
+
+**`POST /verify-reset-code`**
+
+| Status | When | `message` |
+| --- | --- | --- |
+| `200` | Code correct. Data: `{ "resetToken": "..." }` | Code verified. Please choose a new password |
+| `400` | Missing field | Email and code are required |
+| `400` | Wrong or expired code, or unknown email | Invalid or expired code |
+| `429` | 5 wrong attempts | Too many incorrect attempts. Please request a new code |
+
+**`POST /reset-password`**
+
+| Status | When | `message` |
+| --- | --- | --- |
+| `200` | Password changed | Password updated. Please log in |
+| `400` | Missing field | Reset token and password are required |
+| `400` | Password too weak | Password must be at least 8 characters and include a special character |
+| `401` | Token invalid, expired or already used | This reset has expired. Please request a new code |
+
+A reset signs out every device and removes them from the account. Logging in afterwards needs an emailed new-device code, but it doesn't count as a device swap.
+
+---
+
 ## Rate limits
 
 Limits apply per IP address over 15 minutes.
 
 | Endpoints | Limit |
 | --- | --- |
-| `/login`, `/google` | 10 requests |
-| `/register`, `/verify-otp`, `/resend-otp`, `/set-password`, `/device/*` | 30 requests |
+| `/login`, `/google`, `/forgot-password` | 10 requests |
+| `/register`, `/verify-otp`, `/resend-otp`, `/set-password`, `/verify-reset-code`, `/reset-password`, `/device/*` | 30 requests |
 | `/refresh`, `/logout` | 300 requests |
 
 ## Try it with curl

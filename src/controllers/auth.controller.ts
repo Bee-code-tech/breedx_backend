@@ -1,15 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
+import DeviceChallenge from '../models/deviceChallenge.model';
+import Session from '../models/session.model';
 import User from '../models/user.model';
 import { IUser } from '../types/user';
 import { AuthRequest } from '../types/auth';
 import { sendSuccess, sendError } from '../utils/response';
 import { generateOTP, hashOTP, OTP_TTL_MS, OTP_MAX_ATTEMPTS, OTP_RESEND_COOLDOWN_MS } from '../utils/otp';
-import { sendOTP, sendWelcomeEmail } from '../utils/mail';
-import { signSetupToken, verifyToken } from '../utils/token';
+import { sendOTP, sendPasswordResetCode, sendWelcomeEmail } from '../utils/mail';
+import { passwordStamp, signPasswordResetToken, signSetupToken, verifyToken } from '../utils/token';
 import { verifyGoogleCredential } from '../utils/google';
 import env from '../config/env';
-import { beginLogin, getOrCreateDeviceId, issueSession, toPublicUser } from '../utils/session';
+import { beginLogin, clearRefreshCookie, getOrCreateDeviceId, issueSession, toPublicUser } from '../utils/session';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 8;
@@ -24,6 +26,11 @@ const isSignupComplete = (user: IUser): boolean => user.isVerified && !!user.pas
 // otpExpires - TTL = when the last code was issued
 const isInResendCooldown = (user: IUser): boolean =>
   !!user.otpExpires && user.otpExpires.getTime() - OTP_TTL_MS + OTP_RESEND_COOLDOWN_MS > Date.now();
+
+const isValidPassword = (password: unknown): password is string =>
+  typeof password === 'string' && password.length >= PASSWORD_MIN_LENGTH && SPECIAL_CHAR_REGEX.test(password);
+
+const PASSWORD_RULE_MESSAGE = `Password must be at least ${PASSWORD_MIN_LENGTH} characters and include a special character`;
 
 const issueOTP = async (user: IUser): Promise<void> => {
   const otp = generateOTP();
@@ -213,12 +220,8 @@ export const setPassword = async (
       return;
     }
 
-    if (
-      typeof password !== 'string' ||
-      password.length < PASSWORD_MIN_LENGTH ||
-      !SPECIAL_CHAR_REGEX.test(password)
-    ) {
-      sendError(res, `Password must be at least ${PASSWORD_MIN_LENGTH} characters and include a special character`, 400);
+    if (!isValidPassword(password)) {
+      sendError(res, PASSWORD_RULE_MESSAGE, 400);
       return;
     }
 
@@ -281,6 +284,132 @@ export const login = async (
     }
 
     await beginLogin(req, res, user);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/v1/auth/forgot-password
+export const forgotPassword = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const email = normalizeEmail(req.body.email);
+
+    if (!EMAIL_REGEX.test(email)) {
+      sendError(res, 'Please provide a valid email address', 400);
+      return;
+    }
+
+    const user = await User.findOne({ email }).select('+password +otpExpires');
+
+    // Google-only accounts have no password to reset
+    if (user && user.password && user.isVerified && !isInResendCooldown(user)) {
+      const otp = generateOTP();
+      user.otp = hashOTP(otp);
+      user.otpExpires = new Date(Date.now() + OTP_TTL_MS);
+      user.otpAttempts = 0;
+      await user.save();
+
+      // Not awaited: response time must not reveal whether the account exists
+      sendPasswordResetCode(user.email, otp, user.firstName).catch((error) => {
+        console.error('Password reset email failed:', error);
+      });
+    }
+
+    // Same answer either way, so this can't be used to check who has an account
+    sendSuccess(res, null, 'If that email has a BreedX password, we sent a reset code to it');
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/v1/auth/verify-reset-code
+export const verifyResetCode = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    const code = String(req.body.code ?? '').trim();
+
+    if (!email || !code) {
+      sendError(res, 'Email and code are required', 400);
+      return;
+    }
+
+    const user = await User.findOne({ email }).select('+password +otp +otpExpires +otpAttempts');
+
+    if (!user || !user.password || !user.otp || !user.otpExpires || user.otpExpires.getTime() < Date.now()) {
+      sendError(res, 'Invalid or expired code', 400);
+      return;
+    }
+
+    if (user.otpAttempts >= OTP_MAX_ATTEMPTS) {
+      sendError(res, 'Too many incorrect attempts. Please request a new code', 429);
+      return;
+    }
+
+    if (user.otp !== hashOTP(code)) {
+      user.otpAttempts += 1;
+      await user.save();
+      sendError(res, 'Invalid or expired code', 400);
+      return;
+    }
+
+    user.otp = undefined;
+    user.otpExpires = undefined;
+    user.otpAttempts = 0;
+    await user.save();
+
+    sendSuccess(
+      res,
+      { resetToken: signPasswordResetToken(user.id, user.role, user.password) },
+      'Code verified. Please choose a new password'
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/v1/auth/reset-password
+export const resetPassword = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { resetToken, password } = req.body;
+
+    if (!resetToken || !password) {
+      sendError(res, 'Reset token and password are required', 400);
+      return;
+    }
+
+    if (!isValidPassword(password)) {
+      sendError(res, PASSWORD_RULE_MESSAGE, 400);
+      return;
+    }
+
+    const payload = typeof resetToken === 'string' ? verifyToken(resetToken, 'password-reset') : null;
+    const user = payload && (await User.findById(payload.id).select('+password'));
+
+    if (!payload || !user?.password || payload.passwordStamp !== passwordStamp(user.password)) {
+      sendError(res, 'This reset has expired. Please request a new code', 401);
+      return;
+    }
+
+    user.password = await bcrypt.hash(password, 12);
+    await user.save();
+
+    // Sign out everywhere: if someone else was in the account, they're out now
+    await Promise.all([Session.deleteMany({ user: user._id }), DeviceChallenge.deleteMany({ user: user._id })]);
+    clearRefreshCookie(res);
+
+    sendSuccess(res, null, 'Password updated. Please log in');
   } catch (error) {
     next(error);
   }

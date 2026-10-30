@@ -4,6 +4,26 @@ export type UserRole = 'user' | 'admin';
 
 export type AuthProvider = 'local' | 'google';
 
+export type OnboardingStatus = 'pending' | 'complete';
+
+export interface AcademicProfile {
+  school?: string;
+  department?: string;
+  programme?: string;
+  level?: string;
+  startYear?: string;
+  gradYear?: string;
+  interests?: string[];
+}
+
+export interface LearningStyle {
+  approach?: string;
+  time?: string;
+  preference?: string;
+  planning?: string;
+  barriers?: string[];
+}
+
 export interface IUser extends Document {
   firstName: string;
   lastName: string;
@@ -14,6 +34,9 @@ export interface IUser extends Document {
   googleId?: string;
   role: UserRole;
   isVerified: boolean;
+  onboardingStatus: OnboardingStatus;
+  academicProfile: AcademicProfile;
+  learningStyle: LearningStyle;
   otp?: string;
   otpExpires?: Date;
   otpAttempts: number;

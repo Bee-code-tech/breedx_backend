@@ -31,6 +31,9 @@ export const sendOTP = (email: string, otp: string, firstName: string) =>
 export const sendDeviceCode = (email: string, otp: string, device: string, firstName: string) =>
   send(email, 'New device sign-in to BreedX', renderEmail('new-device', { firstName, code: otp, device }));
 
+export const sendPasswordResetCode = (email: string, otp: string, firstName: string) =>
+  send(email, 'Reset your BreedX password', renderEmail('reset-password', { firstName, code: otp }));
+
 // Never blocks signup: a failed welcome email only gets logged
 export const sendWelcomeEmail = (email: string, firstName: string): void => {
   send(email, 'Welcome to BreedX', renderEmail('welcome', { firstName })).catch((error) => {

@@ -64,6 +64,7 @@ export const refreshSession = async (session: ISession, req: Request, res: Respo
 
 export const toPublicUser = (user: IUser) => ({
   id: user._id,
+  name: `${user.firstName} ${user.lastName}`.trim(),
   firstName: user.firstName,
   lastName: user.lastName,
   email: user.email,
@@ -71,6 +72,9 @@ export const toPublicUser = (user: IUser) => ({
   role: user.role,
   authProvider: user.authProvider,
   isVerified: user.isVerified,
+  onboardingStatus: user.onboardingStatus,
+  academicProfile: user.toObject().academicProfile ?? {},
+  learningStyle: user.toObject().learningStyle ?? {},
   createdAt: user.createdAt,
 });
 

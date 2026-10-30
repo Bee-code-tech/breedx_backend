@@ -6,6 +6,9 @@ import {
   setPassword,
   login,
   googleAuth,
+  forgotPassword,
+  verifyResetCode,
+  resetPassword,
   getMe,
 } from '../controllers/auth.controller';
 import {
@@ -34,6 +37,11 @@ router.post('/google', loginLimiter, googleAuth);
 router.post('/device/verify', authLimiter, verifyDevice);
 router.post('/device/resend', authLimiter, resendDeviceCode);
 router.post('/device/replace', authLimiter, replaceDevice);
+
+// Forgot password: forgot-password → verify-reset-code → reset-password
+router.post('/forgot-password', loginLimiter, forgotPassword);
+router.post('/verify-reset-code', authLimiter, verifyResetCode);
+router.post('/reset-password', authLimiter, resetPassword);
 
 router.post('/refresh', refreshLimiter, refresh);
 router.post('/logout', refreshLimiter, logout);
