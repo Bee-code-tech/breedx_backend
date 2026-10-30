@@ -22,7 +22,7 @@ const loadTemplate = (name: string): string => {
   const html = fs
     .readFileSync(path.join(TEMPLATES_DIR, `${name}.html`), 'utf8')
     .replace(PREVIEW_BLOCK, '')
-    .replace(/src="assets\//g, `src="${env.API_URL}/email-assets/`);
+    .replace(/(src="|background="|url\(')assets\//g, `$1${env.API_URL}/email-assets/`);
 
   cache.set(name, html);
   return html;

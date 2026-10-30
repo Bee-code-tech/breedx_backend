@@ -11,8 +11,12 @@
     body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; }
     table { border-collapse: separate; border-spacing: 0; }
 
+    @media (min-width: 621px) {
+      .outer { padding: 32px 16px !important; }
+    }
+
     @media (max-width: 620px) {
-      .outer { padding: 16px 12px !important; }
+      .e-card, .e-top, .e-bottom { border-radius: 0 !important; }
       .pad { padding-left: 24px !important; padding-right: 24px !important; }
     }
 
@@ -27,9 +31,6 @@
       :root:not([data-theme="light"]) .e-pill { background-color:#232B36 !important; color:#F2F4F7 !important; }
       :root:not([data-theme="light"]) .e-btn { background-color:#F2F4F7 !important; }
       :root:not([data-theme="light"]) .e-btn-text { color:#152641 !important; }
-      :root:not([data-theme="light"]) .e-rule { border-color:#2A3340 !important; }
-      :root:not([data-theme="light"]) .logo-l { display:none !important; }
-      :root:not([data-theme="light"]) .logo-d { display:block !important; }
     }
     :root[data-theme="dark"] .e-page { background-color:#0B0F14 !important; }
     :root[data-theme="dark"] .e-card { background-color:#141A22 !important; }
@@ -40,9 +41,6 @@
     :root[data-theme="dark"] .e-pill { background-color:#232B36 !important; color:#F2F4F7 !important; }
     :root[data-theme="dark"] .e-btn { background-color:#F2F4F7 !important; }
     :root[data-theme="dark"] .e-btn-text { color:#152641 !important; }
-    :root[data-theme="dark"] .e-rule { border-color:#2A3340 !important; }
-    :root[data-theme="dark"] .logo-l { display:none !important; }
-    :root[data-theme="dark"] .logo-d { display:block !important; }
     :root[data-theme="dark"] { color-scheme: dark; }
     :root[data-theme="light"] { color-scheme: light; }
   </style>
@@ -82,13 +80,13 @@
 
   <table class="e-page" role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F2F4F7" style="background-color:#F2F4F7;">
     <tr>
-      <td class="outer" align="center" style="padding:48px 16px;">
+      <td class="outer" align="center" style="padding:0;">
         <table class="e-card" role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFFFFF" style="max-width:560px; background-color:#FFFFFF; border-radius:12px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 
           <!-- Header -->
           <tr>
-            <td bgcolor="#152641" style="background-color:#152641; border-radius:12px 12px 0 0; line-height:0; font-size:0;">
-              <img src="assets/email-header.png" width="560" alt="BreedX" style="display:block; width:100%; height:auto; border:0; border-radius:12px 12px 0 0; color:#FFFFFF; font-size:20px; font-weight:600; line-height:26px;">
+            <td class="e-top" bgcolor="#152641" style="background-color:#152641; border-radius:12px 12px 0 0; line-height:0; font-size:0;">
+              <img class="e-top" src="assets/email-header.png" width="560" alt="BreedX" style="display:block; width:100%; height:auto; border:0; border-radius:12px 12px 0 0; color:#FFFFFF; font-size:20px; font-weight:600; line-height:26px;">
             </td>
           </tr>
 
@@ -132,27 +130,27 @@
 
           <!-- Footer -->
           <tr>
-            <td class="pad" style="padding:0 40px 32px;">
-              <table class="e-rule" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #E7EAEE;">
+            <td class="pad e-bottom" bgcolor="#152641" background="assets/email-footer.png" style="padding:28px 40px 32px; background-color:#152641; background-image:url('assets/email-footer.png'); background-repeat:no-repeat; background-position:center bottom; background-size:100% auto; border-radius:0 0 12px 12px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td valign="middle" style="padding-top:24px;">
-                    <a href="https://breedx.org" target="_blank"><img class="logo-l" src="assets/logo.png" width="88" alt="BreedX" style="display:block; width:88px; height:auto; border:0; color:#152641; font-size:15px; font-weight:600;"><img class="logo-d" src="assets/logo-white.png" width="88" alt="BreedX" style="display:none; mso-hide:all; width:88px; height:auto; border:0; color:#152641; font-size:15px; font-weight:600;"></a>
+                  <td valign="middle">
+                    <a href="https://breedx.org" target="_blank"><img src="assets/logo-white.png" width="88" alt="BreedX" style="display:block; width:88px; height:auto; border:0; color:#FFFFFF; font-size:15px; font-weight:600;"></a>
                   </td>
-                  <td valign="middle" align="right" style="padding-top:24px;">
+                  <td valign="middle" align="right">
                     <table role="presentation" cellpadding="0" cellspacing="0" align="right">
                       <tr>
-                        <td style="padding-left:8px;"><a href="https://www.linkedin.com/company/breedx-ai/" target="_blank"><img class="logo-l" src="assets/social-linkedin.png" width="32" height="32" alt="LinkedIn" style="display:block; width:32px; height:32px; border:0; color:#152641; font-size:11px;"><img class="logo-d" src="assets/social-linkedin-dark.png" width="32" height="32" alt="LinkedIn" style="display:none; mso-hide:all; width:32px; height:32px; border:0; color:#152641; font-size:11px;"></a></td>
-                        <td style="padding-left:8px;"><a href="https://x.com/breedxai" target="_blank"><img class="logo-l" src="assets/social-x.png" width="32" height="32" alt="X" style="display:block; width:32px; height:32px; border:0; color:#152641; font-size:11px;"><img class="logo-d" src="assets/social-x-dark.png" width="32" height="32" alt="X" style="display:none; mso-hide:all; width:32px; height:32px; border:0; color:#152641; font-size:11px;"></a></td>
-                        <td style="padding-left:8px;"><a href="https://www.instagram.com/breedx_ai" target="_blank"><img class="logo-l" src="assets/social-instagram.png" width="32" height="32" alt="Instagram" style="display:block; width:32px; height:32px; border:0; color:#152641; font-size:11px;"><img class="logo-d" src="assets/social-instagram-dark.png" width="32" height="32" alt="Instagram" style="display:none; mso-hide:all; width:32px; height:32px; border:0; color:#152641; font-size:11px;"></a></td>
+                        <td style="padding-left:8px;"><a href="https://www.linkedin.com/company/breedx-ai/" target="_blank"><img src="assets/social-linkedin-dark.png" width="32" height="32" alt="LinkedIn" style="display:block; width:32px; height:32px; border:0; color:#FFFFFF; font-size:11px;"></a></td>
+                        <td style="padding-left:8px;"><a href="https://x.com/breedxai" target="_blank"><img src="assets/social-x-dark.png" width="32" height="32" alt="X" style="display:block; width:32px; height:32px; border:0; color:#FFFFFF; font-size:11px;"></a></td>
+                        <td style="padding-left:8px;"><a href="https://www.instagram.com/breedx_ai" target="_blank"><img src="assets/social-instagram-dark.png" width="32" height="32" alt="Instagram" style="display:block; width:32px; height:32px; border:0; color:#FFFFFF; font-size:11px;"></a></td>
                       </tr>
                     </table>
                   </td>
                 </tr>
               </table>
-              <p class="e-muted" style="margin:16px 0 0; font-size:13px; line-height:20px; color:#667085;">Read, ask, find, study, and quiz in one place.</p>
-              <p style="margin:16px 0 0; font-size:13px; line-height:20px;"><a class="e-strong" href="https://breedx.org" target="_blank" style="color:#344054; text-decoration:none; font-weight:500;">Website</a><span style="color:#D0D5DD;">&nbsp;&nbsp;|&nbsp;&nbsp;</span><a class="e-strong" href="https://breedx.org/ambassadors" target="_blank" style="color:#344054; text-decoration:none; font-weight:500;">Ambassadors</a><span style="color:#D0D5DD;">&nbsp;&nbsp;|&nbsp;&nbsp;</span><a class="e-strong" href="https://breedx.org/partnerships" target="_blank" style="color:#344054; text-decoration:none; font-weight:500;">Partnerships</a><span style="color:#D0D5DD;">&nbsp;&nbsp;|&nbsp;&nbsp;</span><a class="e-strong" href="mailto:support@breedx.org" target="_blank" style="color:#344054; text-decoration:none; font-weight:500;">Support</a></p>
-              <p class="e-muted" style="margin:20px 0 0; font-size:12px; line-height:18px; color:#98A2B3;">You received this email because you created a BreedX account.</p>
-              <p class="e-muted" style="margin:4px 0 0; font-size:12px; line-height:18px; color:#98A2B3;">&copy; 2026 BreedX. All rights reserved.</p>
+              <p style="margin:16px 0 0; font-size:13px; line-height:20px; color:#C7CFDA;">Read, ask, find, study, and quiz in one place.</p>
+              <p style="margin:16px 0 0; font-size:13px; line-height:20px;"><a href="https://breedx.org" target="_blank" style="color:#FFFFFF; text-decoration:none; font-weight:500;">Website</a><span style="color:#5B6B85;">&nbsp;&nbsp;|&nbsp;&nbsp;</span><a href="https://breedx.org/ambassadors" target="_blank" style="color:#FFFFFF; text-decoration:none; font-weight:500;">Ambassadors</a><span style="color:#5B6B85;">&nbsp;&nbsp;|&nbsp;&nbsp;</span><a href="https://breedx.org/partnerships" target="_blank" style="color:#FFFFFF; text-decoration:none; font-weight:500;">Partnerships</a><span style="color:#5B6B85;">&nbsp;&nbsp;|&nbsp;&nbsp;</span><a href="mailto:support@breedx.org" target="_blank" style="color:#FFFFFF; text-decoration:none; font-weight:500;">Support</a></p>
+              <p style="margin:20px 0 0; font-size:12px; line-height:18px; color:#AAB4C3;">You received this email because you created a BreedX account.</p>
+              <p style="margin:4px 0 0; font-size:12px; line-height:18px; color:#AAB4C3;">&copy; 2026 BreedX. All rights reserved.</p>
             </td>
           </tr>
 
