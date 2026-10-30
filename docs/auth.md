@@ -561,11 +561,13 @@ POST /login
 
 | Status | When | `message` |
 | --- | --- | --- |
-| `200` | Always, for any valid email | If that email has a BreedX password, we sent a reset code to it |
+| `200` | Code sent | Reset code sent to your email |
 | `400` | Email format invalid | Please provide a valid email address |
+| `400` | Google-only account | This account uses Google sign-in. Please sign in with Google |
+| `403` | Signup not finished | Please finish signing up: verify your email and set a password |
+| `404` | No account with this email | No account found with this email |
+| `429` | Code sent under 60 seconds ago | Please wait a minute before requesting a new code |
 | `429` | 10 requests in 15 minutes from one IP | Too many attempts. Please try again later |
-
-The answer is the same whether or not the account exists, so show the code screen every time. No email is sent to accounts with no password, such as Google-only accounts, or within 60 seconds of the last code.
 
 **`POST /verify-reset-code`**
 

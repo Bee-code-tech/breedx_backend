@@ -305,22 +305,34 @@ export const forgotPassword = async (
 
     const user = await User.findOne({ email }).select('+password +otpExpires');
 
-    // Google-only accounts have no password to reset
-    if (user && user.password && user.isVerified && !isInResendCooldown(user)) {
-      const otp = generateOTP();
-      user.otp = hashOTP(otp);
-      user.otpExpires = new Date(Date.now() + OTP_TTL_MS);
-      user.otpAttempts = 0;
-      await user.save();
-
-      // Not awaited: response time must not reveal whether the account exists
-      sendPasswordResetCode(user.email, otp, user.firstName).catch((error) => {
-        console.error('Password reset email failed:', error);
-      });
+    if (!user) {
+      sendError(res, 'No account found with this email', 404);
+      return;
     }
 
-    // Same answer either way, so this can't be used to check who has an account
-    sendSuccess(res, null, 'If that email has a BreedX password, we sent a reset code to it');
+    if (user.authProvider === 'google' && !user.password) {
+      sendError(res, 'This account uses Google sign-in. Please sign in with Google', 400);
+      return;
+    }
+
+    if (!user.password || !user.isVerified) {
+      sendError(res, 'Please finish signing up: verify your email and set a password', 403);
+      return;
+    }
+
+    if (isInResendCooldown(user)) {
+      sendError(res, 'Please wait a minute before requesting a new code', 429);
+      return;
+    }
+
+    const otp = generateOTP();
+    user.otp = hashOTP(otp);
+    user.otpExpires = new Date(Date.now() + OTP_TTL_MS);
+    user.otpAttempts = 0;
+    await user.save();
+    await sendPasswordResetCode(user.email, otp, user.firstName);
+
+    sendSuccess(res, null, 'Reset code sent to your email');
   } catch (error) {
     next(error);
   }
