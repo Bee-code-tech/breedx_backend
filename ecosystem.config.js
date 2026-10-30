@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'hoa_backend',
+      name: 'breedx_backend',
       script: 'dist/server.js',
       instances: 1,
       autorestart: true,
