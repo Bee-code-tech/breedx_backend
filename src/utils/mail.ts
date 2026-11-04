@@ -40,3 +40,10 @@ export const sendWelcomeEmail = (email: string, firstName: string): void => {
     console.error('Welcome email failed:', error);
   });
 };
+
+// Never blocks joining: a failed waitlist email only gets logged
+export const sendWaitlistEmail = (email: string): void => {
+  send(email, "You're on the BreedX waitlist", renderEmail('waitlist', {})).catch((error) => {
+    console.error('Waitlist email failed:', error);
+  });
+};

@@ -9,6 +9,7 @@ import env from './config/env';
 // Route imports
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
+import waitlistRoutes from './routes/waitlist.routes';
 
 // Middleware imports
 import { errorHandler } from './middleware/errorHandler';
@@ -49,6 +50,7 @@ app.use(
 // ── Routes ─────────────────────────────────────────────────────────────────────
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/waitlist', waitlistRoutes);
 
 // ── Global error handler (must be last) ───────────────────────────────────────
 app.use(errorHandler);
