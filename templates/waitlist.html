@@ -17,6 +17,7 @@
 
     @media (max-width: 620px) {
       .outer { padding: 0 !important; }
+      .btn { padding: 11px 14px !important; font-size: 14px !important; }
       .pad { padding-left: 24px !important; padding-right: 24px !important; }
     }
 
@@ -50,12 +51,11 @@
     u + .body .gmail-screen { background: #000; mix-blend-mode: screen; }
     u + .body .gmail-difference { background: #000; mix-blend-mode: difference; }
 
-    /* Keep the brand lime in dark mode: Apple Mail, Outlook.com and others */
-    .e-lime { background-color: #C3F84A !important; }
-    .e-lime-text { color: #152641 !important; }
-    [data-ogsb] .e-lime { background-color: #C3F84A !important; }
-    [data-ogsc] .e-lime-text { color: #152641 !important; }
-    [data-ogsb] .e-lime-dot { background-color: #152641 !important; }
+    /* Navy pills with lime text stay readable when email apps switch to dark mode */
+    .e-navy { background-color: #152641 !important; }
+    [data-ogsb] .e-navy { background-color: #152641 !important; }
+    @media (prefers-color-scheme: dark) { .e-navy { background-color: #22355A !important; } }
+    :root[data-theme="dark"] .e-navy { background-color: #22355A !important; }
   </style>
 </head>
 <body class="body e-page" style="margin:0; padding:0; background-color:#F2F4F7;">
@@ -108,11 +108,11 @@
             <td class="pad" style="padding:40px 40px 8px;">
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 14px;">
                 <tr>
-                  <td class="e-lime" bgcolor="#C3F84A" style="background-color:#C3F84A; background-image:linear-gradient(#C3F84A,#C3F84A); padding:6px 12px 6px 10px; border-radius:999px;">
+                  <td class="e-navy" bgcolor="#152641" style="background-color:#152641; background-image:linear-gradient(#152641,#152641); padding:6px 12px 6px 10px; border-radius:999px;">
                     <table role="presentation" cellpadding="0" cellspacing="0">
                       <tr>
-                        <td valign="middle" style="padding-right:7px;"><div class="e-lime-dot" style="width:7px; height:7px; border-radius:4px; background-color:#152641; font-size:0; line-height:0;">&nbsp;</div></td>
-                        <td valign="middle" class="e-lime-text" style="font-size:11px; line-height:14px; font-weight:700; letter-spacing:1.2px; color:#152641; white-space:nowrap;">WAITLIST CONFIRMED</td>
+                        <td valign="middle" style="padding-right:7px;"><div style="width:7px; height:7px; border-radius:4px; background-color:#C3F84A; font-size:0; line-height:0;">&nbsp;</div></td>
+                        <td valign="middle" style="font-size:11px; line-height:14px; font-weight:700; letter-spacing:1.2px; color:#C3F84A; white-space:nowrap;">WAITLIST CONFIRMED</td>
                       </tr>
                     </table>
                   </td>
@@ -189,27 +189,18 @@
                   <td style="padding-top:32px;">
                     <p class="e-strong" style="margin:0 0 6px; font-size:17px; line-height:24px; font-weight:600; color:#152641;">Studying is better together</p>
                     <p class="e-text" style="margin:0 0 20px; font-size:15px; line-height:24px; color:#475467;">Know someone who&rsquo;d love this? Send them BreedX before launch day.</p>
-                    <!-- Inline blocks wrap onto a new line on narrow screens without floats -->
-                    <div style="font-size:0; line-height:0;">
-                      <div style="display:inline-block; vertical-align:top; margin:0 12px 12px 0;">
-                        <table role="presentation" cellpadding="0" cellspacing="0">
-                          <tr>
-                            <td class="e-btn" bgcolor="#152641" style="background-color:#152641; border-radius:8px;">
-                              <a class="e-btn-text" href="https://wa.me/?text=I%20just%20joined%20the%20BreedX%20waitlist.%20It%20turns%20your%20course%20materials%20into%20an%20AI%20study%20buddy.%20Join%20me%3A%20https%3A%2F%2Fbreedx.org" target="_blank" style="display:inline-block; padding:12px 22px; font-size:15px; line-height:22px; font-weight:600; color:#FFFFFF; text-decoration:none; white-space:nowrap;">Invite a coursemate</a>
-                            </td>
-                          </tr>
-                        </table>
-                      </div>
-                      <div style="display:inline-block; vertical-align:top; margin:0 0 12px 0;">
-                        <table role="presentation" cellpadding="0" cellspacing="0">
-                          <tr>
-                            <td class="e-lime" bgcolor="#C3F84A" style="background-color:#C3F84A; background-image:linear-gradient(#C3F84A,#C3F84A); border-radius:8px;">
-                              <a class="e-lime-text" href="https://breedx.org" target="_blank" style="display:inline-block; padding:12px 22px; font-size:15px; line-height:22px; font-weight:600; color:#152641; text-decoration:none; white-space:nowrap;">Learn more &rarr;</a>
-                            </td>
-                          </tr>
-                        </table>
-                      </div>
-                    </div>
+                    <!-- Buttons stay side by side; they get more compact on phones -->
+                    <table role="presentation" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td class="e-btn" bgcolor="#152641" style="background-color:#152641; border-radius:8px;">
+                          <a class="e-btn-text btn" href="https://wa.me/?text=I%20just%20joined%20the%20BreedX%20waitlist.%20It%20turns%20your%20course%20materials%20into%20an%20AI%20study%20buddy.%20Join%20me%3A%20https%3A%2F%2Fbreedx.org" target="_blank" style="display:inline-block; padding:12px 22px; font-size:15px; line-height:22px; font-weight:600; color:#FFFFFF; text-decoration:none; white-space:nowrap;">Invite a coursemate</a>
+                        </td>
+                        <td style="width:10px; font-size:0; line-height:0;">&nbsp;</td>
+                        <td class="e-navy" bgcolor="#152641" style="background-color:#152641; background-image:linear-gradient(#152641,#152641); border-radius:8px;">
+                          <a class="btn" href="https://breedx.org" target="_blank" style="display:inline-block; padding:12px 22px; font-size:15px; line-height:22px; font-weight:600; color:#C3F84A; text-decoration:none; white-space:nowrap;">Learn more &rarr;</a>
+                        </td>
+                      </tr>
+                    </table>
                   </td>
                 </tr>
               </table>
