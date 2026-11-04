@@ -633,4 +633,4 @@ curl $BASE/me -H "Authorization: Bearer <accessToken>"
 | `JWT_SECRET` | **Required**: the app won't start without it. Signs all tokens. Use `openssl rand -hex 32` |
 | `CLIENT_ORIGINS` | Comma-separated frontends allowed to call the API with cookies. Defaults to `https://breedx.org`. Use `http://localhost:3000` in development |
 | `RESEND_API_KEY` | Sends the OTP emails |
-| `MAIL_FROM` | Sender address. Defaults to `BreedX <info@breedx.org>`. The domain must be verified in Resend, or emails will fail to send |
+| `MAIL_FROM` | Sender address. Defaults to `BreedX Technologies <info@breedx.org>`. The domain must be verified in Resend, or emails will fail to send |

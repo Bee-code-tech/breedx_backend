@@ -18,7 +18,7 @@ const env = {
   RESEND_API_KEY: process.env.RESEND_API_KEY || '',
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
   // The domain must be verified in Resend
-  MAIL_FROM: process.env.MAIL_FROM || 'BreedX <info@breedx.org>',
+  MAIL_FROM: process.env.MAIL_FROM || 'BreedX Technologies <info@breedx.org>',
 } as const;
 
 export default env;
