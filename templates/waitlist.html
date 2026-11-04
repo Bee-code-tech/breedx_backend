@@ -49,6 +49,13 @@
     /* Gmail on iPhone recolours text in dark mode; this keeps the footer text as designed */
     u + .body .gmail-screen { background: #000; mix-blend-mode: screen; }
     u + .body .gmail-difference { background: #000; mix-blend-mode: difference; }
+
+    /* Keep the brand lime in dark mode: Apple Mail, Outlook.com and others */
+    .e-lime { background-color: #C3F84A !important; }
+    .e-lime-text { color: #152641 !important; }
+    [data-ogsb] .e-lime { background-color: #C3F84A !important; }
+    [data-ogsc] .e-lime-text { color: #152641 !important; }
+    [data-ogsb] .e-lime-dot { background-color: #152641 !important; }
   </style>
 </head>
 <body class="body e-page" style="margin:0; padding:0; background-color:#F2F4F7;">
@@ -101,7 +108,14 @@
             <td class="pad" style="padding:40px 40px 8px;">
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 14px;">
                 <tr>
-                  <td><img src="assets/badge-waitlist.png" width="158" height="26" alt="WAITLIST CONFIRMED" style="display:block; width:158px; height:26px; border:0; color:#152641; font-size:11px; font-weight:700;"></td>
+                  <td class="e-lime" bgcolor="#C3F84A" style="background-color:#C3F84A; background-image:linear-gradient(#C3F84A,#C3F84A); padding:6px 12px 6px 10px; border-radius:999px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td valign="middle" style="padding-right:7px;"><div class="e-lime-dot" style="width:7px; height:7px; border-radius:4px; background-color:#152641; font-size:0; line-height:0;">&nbsp;</div></td>
+                        <td valign="middle" class="e-lime-text" style="font-size:11px; line-height:14px; font-weight:700; letter-spacing:1.2px; color:#152641; white-space:nowrap;">WAITLIST CONFIRMED</td>
+                      </tr>
+                    </table>
+                  </td>
                 </tr>
               </table>
               <h1 class="e-strong" style="margin:0 0 12px; font-size:30px; line-height:38px; font-weight:700; letter-spacing:-0.6px; color:#152641;">You&rsquo;re in.</h1>
@@ -187,7 +201,13 @@
                         </table>
                       </div>
                       <div style="display:inline-block; vertical-align:top; margin:0 0 12px 0;">
-                        <a href="https://breedx.org" target="_blank"><img src="assets/button-learn-more.png" width="142" height="46" alt="Learn more" style="display:block; width:142px; height:46px; border:0; color:#136CFC; font-size:15px; font-weight:600;"></a>
+                        <table role="presentation" cellpadding="0" cellspacing="0">
+                          <tr>
+                            <td class="e-lime" bgcolor="#C3F84A" style="background-color:#C3F84A; background-image:linear-gradient(#C3F84A,#C3F84A); border-radius:8px;">
+                              <a class="e-lime-text" href="https://breedx.org" target="_blank" style="display:inline-block; padding:12px 22px; font-size:15px; line-height:22px; font-weight:600; color:#152641; text-decoration:none; white-space:nowrap;">Learn more &rarr;</a>
+                            </td>
+                          </tr>
+                        </table>
                       </div>
                     </div>
                   </td>
