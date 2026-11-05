@@ -68,6 +68,9 @@ export const toPublicUser = (user: IUser) => ({
   firstName: user.firstName,
   lastName: user.lastName,
   email: user.email,
+  avatarUrl: user.avatar ?? null,
+  // Only true when the query selected +password; getMe does
+  hasPassword: Boolean(user.password) || user.authProvider === 'local',
   country: user.country,
   role: user.role,
   authProvider: user.authProvider,

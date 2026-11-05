@@ -518,7 +518,8 @@ export const getMe = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const user = await User.findById(req.user?.id);
+    // +password only so the app knows whether to ask for the current one
+    const user = await User.findById(req.user?.id).select('+password');
 
     if (!user) {
       sendError(res, 'User not found', 404);
@@ -526,6 +527,55 @@ export const getMe = async (
     }
 
     sendSuccess(res, toPublicUser(user), 'User fetched successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/v1/auth/change-password
+// Google accounts without a password can set one; anyone with a password must give it
+export const changePassword = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!isValidPassword(newPassword)) {
+      sendError(res, PASSWORD_RULE_MESSAGE, 400);
+      return;
+    }
+
+    const user = await User.findById(req.user?.id).select('+password');
+    if (!user) {
+      sendError(res, 'User not found', 404);
+      return;
+    }
+
+    if (user.password) {
+      const matches =
+        typeof currentPassword === 'string' && (await bcrypt.compare(currentPassword, user.password));
+      if (!matches) {
+        sendError(res, 'Your current password is incorrect', 400, { fieldErrors: { currentPassword: 'Incorrect password' } });
+        return;
+      }
+      if (await bcrypt.compare(newPassword, user.password)) {
+        sendError(res, 'Choose a password you haven\'t used here before', 400);
+        return;
+      }
+    }
+
+    user.password = await bcrypt.hash(newPassword, 12);
+    await user.save();
+
+    // Keep this device signed in; sign out every other one
+    await Promise.all([
+      Session.deleteMany({ user: user._id, _id: { $ne: req.user?.sid } }),
+      DeviceChallenge.deleteMany({ user: user._id }),
+    ]);
+
+    sendSuccess(res, toPublicUser(user), 'Password updated. Other devices have been signed out');
   } catch (error) {
     next(error);
   }

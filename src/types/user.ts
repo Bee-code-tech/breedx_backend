@@ -8,6 +8,7 @@ export type OnboardingStatus = 'pending' | 'complete';
 
 export interface AcademicProfile {
   school?: string;
+  faculty?: string;
   department?: string;
   programme?: string;
   level?: string;
@@ -30,6 +31,8 @@ export interface IUser extends Document {
   email: string;
   country: string;
   password?: string;
+  /** Small square photo as a data URL, until we add file storage. */
+  avatar?: string;
   authProvider: AuthProvider;
   googleId?: string;
   role: UserRole;

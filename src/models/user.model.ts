@@ -31,6 +31,7 @@ const userSchema = new Schema<IUser>(
       type: String,
       select: false,
     },
+    avatar: String,
     authProvider: {
       type: String,
       enum: ['local', 'google'],
@@ -58,6 +59,7 @@ const userSchema = new Schema<IUser>(
     },
     academicProfile: {
       school: String,
+      faculty: String,
       department: String,
       programme: String,
       level: String,

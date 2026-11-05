@@ -10,6 +10,7 @@ import {
   verifyResetCode,
   resetPassword,
   getMe,
+  changePassword,
 } from '../controllers/auth.controller';
 import {
   verifyDevice,
@@ -47,6 +48,7 @@ router.post('/refresh', refreshLimiter, refresh);
 router.post('/logout', refreshLimiter, logout);
 
 router.get('/me', protect, getMe);
+router.post('/change-password', protect, loginLimiter, changePassword);
 router.get('/sessions', protect, listSessions);
 router.delete('/sessions/:id', protect, removeSession);
 
