@@ -4,13 +4,18 @@ import { renderEmail } from './emailTemplates';
 
 const resend = new Resend(env.RESEND_API_KEY);
 
-const send = async (email: string, subject: string, html: string) => {
+type SendOptions = { from?: string; text?: string; replyTo?: string; scheduledAt?: string };
+
+const send = async (email: string, subject: string, html: string, options: SendOptions = {}) => {
   try {
     const { data, error } = await resend.emails.send({
-      from: env.MAIL_FROM,
+      from: options.from ?? env.MAIL_FROM,
       to: [email],
       subject,
       html,
+      ...(options.text && { text: options.text }),
+      ...(options.replyTo && { replyTo: options.replyTo }),
+      ...(options.scheduledAt && { scheduledAt: options.scheduledAt }),
     });
 
     if (error) {
@@ -34,9 +39,35 @@ export const sendDeviceCode = (email: string, otp: string, device: string, first
 export const sendPasswordResetCode = (email: string, otp: string, firstName: string) =>
   send(email, 'Reset your BreedX password', renderEmail('reset-password', { firstName, code: otp }));
 
-// Never blocks signup: a failed welcome email only gets logged
+const WELCOME_DELAY_MS = 5 * 60 * 1000;
+
+const welcomeText = (firstName: string) => `Hi ${firstName},
+
+Welcome to The Breed. You're officially in, and we're so hyped to have you. 🔥
+
+I'm Al-Ameen, a student and co-founder of BreedX. My co-founder, Ahmad, graduated from university and chose to build this with me: the way he would have loved to learn. Between us, we've seen both sides: the late-night cramming, and the "if only I'd studied smarter" that comes after.
+
+So we built BreedX to make studying hit different. Turn your course materials into quizzes and flashcards in seconds. Ask questions and get answers straight from your notes. Study with your coursemates instead of alone. And every bit of effort you put in gets rewarded, not just the top grades.
+
+Your first move: open BreedX, add one course material and take a quick quiz on it. It takes two minutes, and you'll see exactly what we mean.
+
+Take your first quiz: https://breedx.org/home
+
+One quick question: what made you join? Hit reply and tell me. I read every single reply.
+
+Let's get to work,
+Al-Ameen
+Co-founder, BreedX`;
+
+// Personal note sent 5 minutes after signup. Resend holds the schedule, so a
+// server restart can't lose it. Never blocks signup: a failure only gets logged
 export const sendWelcomeEmail = (email: string, firstName: string): void => {
-  send(email, 'Welcome to BreedX', renderEmail('welcome', { firstName })).catch((error) => {
+  send(email, 'Welcome to The Breed 🔥', renderEmail('welcome', { firstName }), {
+    from: 'Al-Ameen from BreedX <info@breedx.org>',
+    replyTo: 'info@breedx.org',
+    text: welcomeText(firstName),
+    scheduledAt: new Date(Date.now() + WELCOME_DELAY_MS).toISOString(),
+  }).catch((error) => {
     console.error('Welcome email failed:', error);
   });
 };
