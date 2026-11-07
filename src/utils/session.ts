@@ -10,6 +10,7 @@ import { sendDeviceCode } from './mail';
 import { generateOTP, hashOTP, OTP_RESEND_COOLDOWN_MS, OTP_TTL_MS } from './otp';
 import { sendError, sendSuccess } from './response';
 import { signAccessToken, signDeviceChallengeToken, signDeviceSwapToken } from './token';
+import { activePlan } from './plan';
 
 export const DEVICE_LIMIT = 2;
 export const DEVICE_SWAP_LIMIT = 3;
@@ -73,6 +74,8 @@ export const toPublicUser = (user: IUser) => ({
   hasPassword: Boolean(user.password) || user.authProvider === 'local',
   country: user.country,
   role: user.role,
+  plan: activePlan(user),
+  planExpiresAt: activePlan(user) === 'free' ? null : user.planExpiresAt,
   authProvider: user.authProvider,
   isVerified: user.isVerified,
   onboardingStatus: user.onboardingStatus,

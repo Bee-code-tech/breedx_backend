@@ -1,5 +1,6 @@
 import { Schema, model } from 'mongoose';
 import { IUser } from '@interfaces/user';
+import { PLAN_IDS } from '../config/plans';
 
 const userSchema = new Schema<IUser>(
   {
@@ -48,6 +49,13 @@ const userSchema = new Schema<IUser>(
       enum: ['user', 'admin'],
       default: 'user',
     },
+    // Paid plans fall back to free once planExpiresAt passes
+    plan: {
+      type: String,
+      enum: PLAN_IDS,
+      default: 'free',
+    },
+    planExpiresAt: { type: Date, default: null },
     isVerified: {
       type: Boolean,
       default: false,

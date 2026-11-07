@@ -10,6 +10,8 @@ import env from './config/env';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
 import waitlistRoutes from './routes/waitlist.routes';
+import cgpaRoutes from './routes/cgpa.routes';
+import libraryRoutes from './routes/library.routes';
 
 // Middleware imports
 import { errorHandler } from './middleware/errorHandler';
@@ -51,6 +53,8 @@ app.use(
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/waitlist', waitlistRoutes);
+app.use('/api/v1/cgpa', cgpaRoutes);
+app.use('/api/v1/libraries', libraryRoutes);
 
 // ── Global error handler (must be last) ───────────────────────────────────────
 app.use(errorHandler);

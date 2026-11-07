@@ -1,4 +1,5 @@
 import { Document } from 'mongoose';
+import { PlanId } from '../config/plans';
 
 export type UserRole = 'user' | 'admin';
 
@@ -36,6 +37,8 @@ export interface IUser extends Document {
   authProvider: AuthProvider;
   googleId?: string;
   role: UserRole;
+  plan: PlanId;
+  planExpiresAt: Date | null;
   isVerified: boolean;
   onboardingStatus: OnboardingStatus;
   academicProfile: AcademicProfile;

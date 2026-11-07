@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://breedx.org", "https://www.breedx.org", "http://localhost:3000"],
+    "method": ["PUT", "POST", "GET"],
+    "responseHeader": ["Content-Type", "Content-Range", "Range", "x-goog-resumable"],
+    "maxAgeSeconds": 3600
+  }
+]

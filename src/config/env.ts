@@ -19,6 +19,9 @@ const env = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
   // The domain must be verified in Resend
   MAIL_FROM: process.env.MAIL_FROM || 'BreedX Technologies <info@breedx.org>',
+  // Google Cloud Storage bucket for library files. Locally, sign in once with
+  // `gcloud auth application-default login`; on the VM its service account is used
+  GCS_BUCKET: process.env.GCS_BUCKET || 'breedx-materials',
 } as const;
 
 export default env;
