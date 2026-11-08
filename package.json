@@ -7,7 +7,9 @@
     "dev": "nodemon",
     "build": "tsc",
     "start": "node dist/server.js",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "seed:spaces": "ts-node --project tsconfig.json src/scripts/seed-spaces.ts",
+    "seed:schedule": "ts-node --project tsconfig.json src/scripts/seed-schedule.ts"
   },
   "keywords": [],
   "author": "",
@@ -26,7 +28,8 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.10.2",
     "morgan": "^1.10.0",
-    "resend": "^6.9.4"
+    "resend": "^6.9.4",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -36,6 +39,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.13.10",
+    "@types/web-push": "^3.6.4",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",

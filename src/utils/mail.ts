@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import env from '../config/env';
 import { renderEmail } from './emailTemplates';
+import type { IPartnershipRequest } from '../models/partnership.model';
 
 const resend = new Resend(env.RESEND_API_KEY);
 
@@ -76,5 +77,59 @@ export const sendWelcomeEmail = (email: string, firstName: string): void => {
 export const sendWaitlistEmail = (email: string): void => {
   send(email, "You're on the BreedX waitlist", renderEmail('waitlist', {})).catch((error) => {
     console.error('Waitlist email failed:', error);
+  });
+};
+
+const PARTNERSHIP_TYPE_LABELS: Record<IPartnershipRequest['type'], string> = {
+  companies: 'Company',
+  agencies: 'Agency',
+  organizations: 'Organization',
+  individuals: 'Individual',
+};
+
+const NOT_PROVIDED = 'Not provided';
+
+// Thanks the sender and notifies the team. Never blocks the request: the
+// request is already saved, so a failed email only gets logged
+export const sendPartnershipEmails = (request: IPartnershipRequest): void => {
+  const firstName = request.name.split(/\s+/)[0];
+  const type = PARTNERSHIP_TYPE_LABELS[request.type];
+  const organization = request.organization || NOT_PROVIDED;
+  const topic = request.topic || NOT_PROVIDED;
+
+  send(
+    request.email,
+    'We got your partnership request',
+    renderEmail('partnership-received', { firstName, type, organization, topic }),
+    { replyTo: env.PARTNERSHIPS_INBOX }
+  ).catch((error) => {
+    console.error('Partnership thank-you email failed:', error);
+  });
+
+  // dateStyle can't be combined with timeZoneName, so the zone is spelled out
+  const receivedAt = `${new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Africa/Lagos',
+  }).format(request.createdAt)} WAT`;
+
+  send(
+    env.PARTNERSHIPS_INBOX,
+    `New partnership request: ${request.organization || request.name}`,
+    renderEmail('partnership-request', {
+      name: request.name,
+      firstName,
+      organization: request.organization || request.name,
+      type,
+      email: request.email,
+      phone: request.phone || NOT_PROVIDED,
+      website: request.website || NOT_PROVIDED,
+      topic,
+      message: request.message,
+      receivedAt,
+    }),
+    { replyTo: request.email }
+  ).catch((error) => {
+    console.error('Partnership notification email failed:', error);
   });
 };

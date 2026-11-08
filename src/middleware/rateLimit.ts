@@ -14,3 +14,5 @@ const limiter = (limit: number) =>
 export const loginLimiter = limiter(10);
 export const authLimiter = limiter(30);
 export const refreshLimiter = limiter(300);
+// Public forms such as partnership requests
+export const formLimiter = limiter(10);

@@ -11,13 +11,15 @@ export interface PlanLimits {
   storageBytes: number;
   /** Largest single file, in bytes. */
   maxFileBytes: number;
+  /** How many spaces the student can own. Joining others' spaces is free. */
+  spaces: number | null;
 }
 
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
 
 export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
-  free: { libraries: 2, storageBytes: 500 * MB, maxFileBytes: 25 * MB },
-  scholar: { libraries: 10, storageBytes: 5 * GB, maxFileBytes: 100 * MB },
-  elite: { libraries: null, storageBytes: 20 * GB, maxFileBytes: 250 * MB },
+  free: { libraries: 2, storageBytes: 500 * MB, maxFileBytes: 25 * MB, spaces: 1 },
+  scholar: { libraries: 10, storageBytes: 5 * GB, maxFileBytes: 100 * MB, spaces: 5 },
+  elite: { libraries: null, storageBytes: 20 * GB, maxFileBytes: 250 * MB, spaces: null },
 };

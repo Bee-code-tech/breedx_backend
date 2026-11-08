@@ -19,6 +19,12 @@ const env = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
   // The domain must be verified in Resend
   MAIL_FROM: process.env.MAIL_FROM || 'BreedX Technologies <info@breedx.org>',
+  // Where partnership requests are delivered
+  PARTNERSHIPS_INBOX: process.env.PARTNERSHIPS_INBOX || 'info@breedx.org',
+  // Web push for schedule reminders; without keys, push is simply off
+  VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || '',
+  VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || '',
+  VAPID_SUBJECT: process.env.VAPID_SUBJECT || 'mailto:info@breedx.org',
   // Google Cloud Storage bucket for library files. Locally, sign in once with
   // `gcloud auth application-default login`; on the VM its service account is used
   GCS_BUCKET: process.env.GCS_BUCKET || 'breedx-materials',

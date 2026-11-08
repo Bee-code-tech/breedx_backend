@@ -10,6 +10,10 @@ import env from './config/env';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
 import waitlistRoutes from './routes/waitlist.routes';
+import partnershipRoutes from './routes/partnership.routes';
+import spaceRoutes from './routes/space.routes';
+import scheduleRoutes from './routes/schedule.routes';
+import pushRoutes from './routes/push.routes';
 import cgpaRoutes from './routes/cgpa.routes';
 import libraryRoutes from './routes/library.routes';
 
@@ -53,6 +57,10 @@ app.use(
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/waitlist', waitlistRoutes);
+app.use('/api/v1/partnerships', partnershipRoutes);
+app.use('/api/v1/spaces', spaceRoutes);
+app.use('/api/v1/schedule', scheduleRoutes);
+app.use('/api/v1/push', pushRoutes);
 app.use('/api/v1/cgpa', cgpaRoutes);
 app.use('/api/v1/libraries', libraryRoutes);
 
