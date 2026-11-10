@@ -11,9 +11,9 @@ their storage in one library or split it however they like.
 
 | Plan | Libraries | Storage (total) | Largest file |
 |---|---|---|---|
-| Free | 2 | 500 MB | 25 MB |
-| Scholar | 10 | 5 GB | 100 MB |
-| Elite | Unlimited | 20 GB | 250 MB |
+| Free | 2 | 2 GB | 25 MB |
+| Scholar | 10 | 10 GB | 100 MB |
+| Elite | Unlimited | 50 GB | 250 MB |
 
 - A file in several libraries counts **once**.
 - Deleting a file or library frees its storage straight away.
@@ -39,7 +39,7 @@ When a limit is hit, the API answers `403` (or `413` for a file that's too big):
 ```json
 {
   "plan": "free",
-  "storage": { "usedBytes": 431800320, "limitBytes": 524288000, "maxFileBytes": 26214400 },
+  "storage": { "usedBytes": 431800320, "limitBytes": 2147483648, "maxFileBytes": 26214400 },
   "libraries": { "used": 2, "limit": 2 }
 }
 ```

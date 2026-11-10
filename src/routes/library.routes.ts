@@ -11,6 +11,7 @@ import {
   listSaved,
   moveFile,
   removeFile,
+  saveProgress,
   setSaved,
   startUpload,
   updateFile,
@@ -44,5 +45,6 @@ router.post('/:id/files/:fileId/move', moveFile);
 router.put('/:id/files/:fileId/save', setSaved(true));
 router.delete('/:id/files/:fileId/save', setSaved(false));
 router.get('/:id/files/:fileId/content', getFileContent);
+router.put('/:id/files/:fileId/progress', saveProgress);
 
 export default router;

@@ -49,3 +49,14 @@ export const deleteObject = async (path: string): Promise<void> => {
 };
 
 export const readObject = (path: string) => bucket.file(path).createReadStream();
+
+/** Saves something the server made, e.g. a read-aloud clip. */
+export const saveObject = async (path: string, contents: Buffer, contentType: string): Promise<void> => {
+  await bucket.file(path).save(contents, { contentType, resumable: false });
+};
+
+/** The whole file in memory, for the AI to read. */
+export const downloadObject = async (path: string): Promise<Buffer> => {
+  const [contents] = await bucket.file(path).download();
+  return contents;
+};

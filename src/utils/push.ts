@@ -16,6 +16,14 @@ export type PushMessage = {
   url: string;
   /** Notifications with the same tag replace each other instead of stacking. */
   tag?: string;
+  /** The in-app notification it belongs to, so tapping it can mark it read. */
+  notificationId?: string;
+  /** Unread notifications, for the app icon's badge. */
+  unread?: number;
+  /** What it's about (e.g. warmup, class-reminder), so the phone can add buttons for it. */
+  kind?: string;
+  /** Time-sensitive: a stronger buzz, and it stays on screen until handled. */
+  urgent?: boolean;
 };
 
 // Sends to every device these people allowed. Devices that unsubscribed are

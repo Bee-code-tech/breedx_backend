@@ -16,3 +16,5 @@ export const authLimiter = limiter(30);
 export const refreshLimiter = limiter(300);
 // Public forms such as partnership requests
 export const formLimiter = limiter(10);
+// AI requests. Energy is the real limit; this only stops runaway scripts
+export const aiLimiter = limiter(150);

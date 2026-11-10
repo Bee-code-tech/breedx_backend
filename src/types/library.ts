@@ -43,6 +43,35 @@ export interface ILibrary extends Document {
   updatedAt: Date;
 }
 
+/** What a "page" is in a material: a PDF page, a slide, or a stretch of text for docs without pages. */
+export type PageUnit = 'page' | 'slide' | 'section';
+
+export interface TopicEntry {
+  title: string;
+  startPage: number;
+  endPage: number;
+  concepts: string[];
+}
+
+export interface ChapterEntry {
+  title: string;
+  startPage: number;
+  endPage: number;
+  topics: TopicEntry[];
+}
+
+/** The material's table of contents, built by the AI when it first reads it. */
+export interface TopicMap {
+  chapters: ChapterEntry[];
+}
+
+/** Where processing is, so students waiting on the same file can see it too. */
+export interface ProcessingProgress {
+  stage: 'reading' | 'scanning' | 'mapping' | 'indexing';
+  done: number;
+  total: number;
+}
+
 /** One stored file in the bucket, shared by every library entry that points to it. */
 export interface IMaterial extends Document {
   storagePath: string;
@@ -52,8 +81,19 @@ export interface IMaterial extends Document {
   crc32c: string;
   /** Filled in when the AI first reads the file. */
   pageCount: number | null;
+  /** Of those, how many were scanned images read with the AI. */
+  scannedPages?: number;
+  pageUnit: PageUnit;
   /** `stored` until the AI first reads it (only when a student prompts). */
   status: MaterialStatus;
+  map: TopicMap | null;
+  chunkCount: number;
+  progress: ProcessingProgress | null;
+  /** When processing last started, so a crashed run can be picked up again. */
+  processingAt: Date | null;
+  processedAt: Date | null;
+  /** Why processing failed. `UNSUPPORTED` is never retried. */
+  error: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

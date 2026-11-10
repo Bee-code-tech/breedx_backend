@@ -14,6 +14,10 @@ import {
   SpacePrivacy,
   SpaceRole,
 } from '../types/space';
+import env from '../config/env';
+import { sendNotificationEmail } from '../utils/mail';
+import { notify } from '../utils/notify';
+import { releaseMaterials } from '../utils/materials';
 import { planFor } from '../utils/plan';
 import { sendError, sendSuccess } from '../utils/response';
 
@@ -75,6 +79,8 @@ const toViewerSpace = async (space: ISpace, viewerId: string, viewerRole: SpaceR
     title: course.title,
     code: course.code,
     materials: [...course.materials]
+      // An upload still in progress only shows to the person uploading it
+      .filter((material) => material.status !== 'uploading' || isViewer(material.uploadedBy))
       .sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime())
       .map((material) => ({
         id: String(material._id),
@@ -82,6 +88,10 @@ const toViewerSpace = async (space: ISpace, viewerId: string, viewerRole: SpaceR
         fileType: material.fileType,
         uploadedBy: who(material.uploadedBy, material.uploadedByName),
         uploadedAt: material.uploadedAt.toISOString(),
+        size: material.size ?? 0,
+        // "ready" can be opened; "legacy" was added by name only, before uploads
+        status: material.status ?? 'legacy',
+        hasFile: Boolean(material.material),
       })),
   }));
 
@@ -117,6 +127,7 @@ const toViewerSpace = async (space: ISpace, viewerId: string, viewerRole: SpaceR
       membersCanUpload: space.rules.membersCanUpload,
       membersCanInvite: space.rules.membersCanInvite,
       approveNewMembers: space.rules.approveNewMembers,
+      warmups: space.rules.warmups !== false,
     },
     inviteLink: `breedx.org/j/${space.slug}`,
     createdBy: isViewer(space.owner) ? 'You' : (owner?.firstName ?? 'A student'),
@@ -316,7 +327,7 @@ export const updateSpace = async (req: AuthRequest, res: Response, next: NextFun
       space.privacy = body.privacy;
     }
     if ('rules' in body && body.rules && typeof body.rules === 'object') {
-      for (const key of ['membersCanUpload', 'membersCanInvite', 'approveNewMembers'] as const) {
+      for (const key of ['membersCanUpload', 'membersCanInvite', 'approveNewMembers', 'warmups'] as const) {
         if (typeof body.rules[key] === 'boolean') space.rules[key] = body.rules[key];
       }
     }
@@ -427,6 +438,24 @@ export const joinSpace = async (req: AuthRequest, res: Response, next: NextFunct
       membership = await SpaceMember.create({ space: space._id, user: userId, role: 'member', status: 'active' });
     }
     await respondSpace(res, space, userId, membership.role, `You joined ${space.name}`, 201);
+
+    // Owners and admins hear about new members, a day's worth in one notification
+    const name = await viewerName(userId);
+    const managers = await SpaceMember.find({ space: space._id, status: 'active', role: { $in: ['owner', 'admin'] } }).lean();
+    void notify(
+      managers.map((manager) => manager.user!).filter((user) => user && String(user) !== userId),
+      {
+        category: 'spaces',
+        kind: 'space-joined',
+        title: '',
+        link: `/classes/${space.slug}?tab=members`,
+        image: space.imageUrl ?? null,
+        group: {
+          key: `space-joined:${space._id}`,
+          title: (count) => (count === 1 ? `${name} joined ${space.name}` : `${count} people joined ${space.name}`),
+        },
+      }
+    );
   } catch (error) {
     if ((error as { code?: number }).code === 11000) return sendError(res, "You're already in this space", 409);
     next(error);
@@ -436,6 +465,46 @@ export const joinSpace = async (req: AuthRequest, res: Response, next: NextFunct
 // ── Members ───────────────────────────────────────────────────────────────────
 
 // POST /api/v1/spaces/:slug/invites { emails }
+/**
+ * An invite reaches people with an account under the bell, by push and by
+ * email; people without one get an email inviting them to sign up and join.
+ */
+const tellInvited = async (
+  space: { _id: Types.ObjectId; name: string; slug: string; imageUrl?: string | null },
+  inviterId: string,
+  emails: string[],
+  users: { _id: Types.ObjectId; email: string }[]
+) => {
+  try {
+    const inviter = await viewerName(inviterId);
+    const title = `${inviter} invited you to ${space.name}`;
+    const body = 'Join to see its timetable, materials and quizzes.';
+    const members = users.filter((user) => emails.includes(user.email));
+    await notify(
+      members.map((user) => user._id),
+      { category: 'spaces', kind: 'space-invite', title, body, link: `/j/${space.slug}`, image: space.imageUrl ?? null },
+      { push: true, email: { action: 'Join the space' } }
+    );
+    const memberEmails = new Set(members.map((user) => user.email));
+    await Promise.all(
+      emails
+        .filter((email) => !memberEmails.has(email))
+        .map((email) =>
+          sendNotificationEmail(email, {
+            firstName: 'there',
+            heading: title,
+            body: `${body} BreedX turns your course materials into explanations, quizzes and flashcards.`,
+            action: 'Join on BreedX',
+            url: `${env.APP_URL}/j/${space.slug}`,
+            reason: 'space invite',
+          }).catch((error) => console.error('Invite email failed:', error))
+        )
+    );
+  } catch (error) {
+    console.error('Telling invited people failed:', error);
+  }
+};
+
 export const inviteMembers = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const found = await loadSpace(req, res);
@@ -458,18 +527,21 @@ export const inviteMembers = async (req: AuthRequest, res: Response, next: NextF
       users.filter((u) => joined.some((m) => String(m.user) === String(u._id))).map((u) => u.email)
     );
 
-    await Promise.all(
-      emails
-        .filter((email) => !joinedEmails.has(email))
-        .map((email) =>
-          SpaceMember.updateOne(
-            { space: space._id, email },
-            { $setOnInsert: { space: space._id, email, role: 'member', status: 'invited', joinedAt: new Date() } },
-            { upsert: true }
-          )
+    const invited = emails.filter((email) => !joinedEmails.has(email));
+    const results = await Promise.all(
+      invited.map((email) =>
+        SpaceMember.updateOne(
+          { space: space._id, email },
+          { $setOnInsert: { space: space._id, email, role: 'member', status: 'invited', joinedAt: new Date() } },
+          { upsert: true }
         )
+      )
     );
     await respondSpace(res, space, userId, membership.role, 'Invites saved');
+
+    // Tell only people invited just now, so asking again doesn't spam them
+    const fresh = invited.filter((_, index) => results[index].upsertedCount > 0);
+    if (fresh.length) void tellInvited(space, userId, fresh, users);
   } catch (error) {
     next(error);
   }
@@ -621,6 +693,28 @@ export const addMaterials = async (req: AuthRequest, res: Response, next: NextFu
     }
     await space.save();
     await respondSpace(res, space, userId, membership.role, 'Materials added', 201);
+
+    // Everyone else in the space sees new materials under the bell
+    const members = await SpaceMember.find({ space: space._id, status: 'active', user: { $ne: new Types.ObjectId(userId) } }).lean();
+    const courseNames = courses.map((course) => course.code || course.title).join(', ');
+    void notify(
+      members.map((member) => member.user!).filter(Boolean),
+      {
+        category: 'spaces',
+        kind: 'space-materials',
+        title: '',
+        link: `/classes/${space.slug}?tab=materials`,
+        image: space.imageUrl ?? null,
+        group: {
+          key: `space-materials:${space._id}`,
+          title: (count) =>
+            count === 1
+              ? `${name} added ${parsed.length === 1 ? parsed[0].title : `${parsed.length} files`} to ${courseNames}`
+              : `New materials in ${space.name}`,
+          body: (count) => (count === 1 ? space.name : `${count} uploads today`),
+        },
+      }
+    );
   } catch (error) {
     next(error);
   }
@@ -666,8 +760,11 @@ export const removeMaterial = async (req: AuthRequest, res: Response, next: Next
     if (!canManage(membership.role) && String(material.uploadedBy) !== userId) {
       return sendError(res, 'You can only remove materials you added', 403);
     }
+    const stored = material.material;
     material.deleteOne();
     await space.save();
+    // The file goes too, unless a library or another course still has it
+    if (stored) void releaseMaterials([stored]).catch((error) => console.error('Releasing a material failed:', error));
     await respondSpace(res, space, userId, membership.role, 'Material removed');
   } catch (error) {
     next(error);

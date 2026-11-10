@@ -13,6 +13,12 @@ const materialSchema = new Schema(
     uploadedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     uploadedByName: { type: String, required: true },
     uploadedAt: { type: Date, default: Date.now },
+    // The stored file. Old materials from before uploads have none (status "legacy")
+    material: { type: Schema.Types.ObjectId, ref: 'Material', default: null },
+    size: { type: Number, default: 0 },
+    status: { type: String, enum: ['uploading', 'ready', 'legacy'], default: 'legacy' },
+    // Where the browser uploads to, while uploading
+    uploadPath: { type: String, default: null },
   },
   { _id: true }
 );
@@ -40,6 +46,8 @@ const spaceSchema = new Schema<ISpace>(
       membersCanUpload: { type: Boolean, default: true },
       membersCanInvite: { type: Boolean, default: false },
       approveNewMembers: { type: Boolean, default: false },
+      // Pre-class warm-up quizzes from each class's course materials
+      warmups: { type: Boolean, default: true },
     },
     owner: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     timezone: { type: String, default: 'Africa/Lagos' },

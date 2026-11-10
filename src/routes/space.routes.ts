@@ -28,6 +28,12 @@ import {
   setHomeSpace,
   updateEntry,
 } from '../controllers/schedule.controller';
+import {
+  completeMaterialUpload,
+  getMaterialContent,
+  saveMaterialToLibrary,
+  startMaterialUpload,
+} from '../controllers/spaceMaterial.controller';
 import { protect } from '../middleware/auth';
 import { refreshLimiter } from '../middleware/rateLimit';
 
@@ -55,6 +61,11 @@ router.patch('/:slug/courses/:courseId', updateCourse);
 router.delete('/:slug/courses/:courseId', deleteCourse);
 
 router.post('/:slug/materials', addMaterials);
+// Course materials as real files: start → browser PUTs to uploadUrl → complete
+router.post('/:slug/courses/:courseId/uploads', refreshLimiter, startMaterialUpload);
+router.post('/:slug/materials/:materialId/complete', completeMaterialUpload);
+router.get('/:slug/materials/:materialId/content', getMaterialContent);
+router.post('/:slug/materials/:materialId/save', saveMaterialToLibrary);
 router.patch('/:slug/materials/:materialId', renameMaterial);
 router.delete('/:slug/materials/:materialId', removeMaterial);
 

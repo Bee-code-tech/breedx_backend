@@ -133,3 +133,12 @@ export const sendPartnershipEmails = (request: IPartnershipRequest): void => {
     console.error('Partnership notification email failed:', error);
   });
 };
+
+/** Any notification as an email: a heading, a short message and a button. */
+export const sendNotificationEmail = (
+  email: string,
+  values: { firstName: string; heading: string; body: string; action: string; url: string; reason: string }
+) =>
+  send(email, values.heading, renderEmail('notification', { ...values, preview: values.body }), {
+    text: `Hi ${values.firstName},\n\n${values.heading}\n\n${values.body}\n\n${values.action}: ${values.url}`,
+  });

@@ -16,6 +16,8 @@ export interface ISpaceRules {
   membersCanUpload: boolean;
   membersCanInvite: boolean;
   approveNewMembers: boolean;
+  /** Pre-class warm-up quizzes for the space's classes. On unless the owner turns them off. */
+  warmups?: boolean;
 }
 
 export interface ISpaceMaterial {
@@ -26,6 +28,12 @@ export interface ISpaceMaterial {
   /** Kept so the name still shows after the uploader leaves. */
   uploadedByName: string;
   uploadedAt: Date;
+  /** The stored file, shared with anyone's library that has the same file. Null for old name-only materials. */
+  material: Types.ObjectId | null;
+  size: number;
+  /** `uploading` until the browser finishes, then `ready`. `legacy`: added before uploads, name only. */
+  status: 'uploading' | 'ready' | 'legacy';
+  uploadPath: string | null;
 }
 
 export interface ISpaceCourse {
@@ -99,6 +107,8 @@ export interface ISpaceMember extends Document {
    * Anything unset counts as on.
    */
   schedulePrefs?: Partial<Record<ScheduleEntryKind, { home?: boolean; remind?: boolean }>>;
+  /** Courses they don't take: no warm-ups for these. */
+  mutedCourses?: Types.ObjectId[];
   joinedAt: Date;
 }
 

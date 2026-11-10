@@ -14,7 +14,7 @@ const visibleTo = (spaceId: Types.ObjectId, userId: string) => ({
   space: spaceId,
   $or: [{ kind: { $ne: 'study' } }, { kind: 'study', owner: new Types.ObjectId(userId) }],
 });
-import { pushToUsers } from '../utils/push';
+import { notify } from '../utils/notify';
 import { sendError, sendSuccess } from '../utils/response';
 import { entryName, entryWhen, homeSpaceIdFor, prefsOf } from '../utils/schedule';
 import { loadSpace } from './space.controller';
@@ -147,9 +147,17 @@ const announce = async (space: ISpace, ownerId: string, kind: ScheduleEntryKind,
         status: 'active',
         user: { $ne: new Types.ObjectId(ownerId) },
       }).lean();
-      await pushToUsers(
+      await notify(
         members.map((member) => member.user!).filter(Boolean),
-        { title: `${title} · ${space.name}`, body: detail, url: `/classes/${space.slug}?tab=schedule`, tag: key }
+        {
+          category: 'schedule',
+          kind: 'schedule-change',
+          title: `${title} · ${space.name}`,
+          body: detail,
+          link: `/classes/${space.slug}?tab=schedule`,
+          image: space.imageUrl ?? null,
+        },
+        { push: true }
       );
     }, PUSH_QUIET_MS)
   );

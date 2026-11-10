@@ -56,6 +56,14 @@ const userSchema = new Schema<IUser>(
       default: 'free',
     },
     planExpiresAt: { type: Date, default: null },
+    // AI energy tank (see config/plans.ts). New students start full
+    aiEnergy: { type: Number, default: null },
+    aiEnergyAt: { type: Date, default: null },
+    aiReserve: { type: Number, default: 0 },
+    // Sent by the app; streak days and weeks are counted in it
+    timezone: { type: String, default: null },
+    warmups: { type: Boolean, default: true },
+    notificationPrefs: { type: Schema.Types.Mixed, default: undefined },
     isVerified: {
       type: Boolean,
       default: false,

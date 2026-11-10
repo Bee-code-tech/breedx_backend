@@ -16,6 +16,13 @@ import scheduleRoutes from './routes/schedule.routes';
 import pushRoutes from './routes/push.routes';
 import cgpaRoutes from './routes/cgpa.routes';
 import libraryRoutes from './routes/library.routes';
+import aiRoutes from './routes/ai.routes';
+import quizRoutes from './routes/quiz.routes';
+import flashcardRoutes from './routes/flashcard.routes';
+import homeRoutes from './routes/home.routes';
+import progressRoutes from './routes/progress.routes';
+import billingRoutes from './routes/billing.routes';
+import notificationRoutes from './routes/notification.routes';
 
 // Middleware imports
 import { errorHandler } from './middleware/errorHandler';
@@ -28,6 +35,10 @@ app.set('trust proxy', 1);
 // ── Security & parsing middleware ──────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({ origin: env.CLIENT_ORIGINS, credentials: true }));
+// Quizzes can carry pictures, so they get a bigger body limit than everything else
+// Bachs signs the exact bytes it sends, so its webhook keeps the raw body
+app.use('/api/v1/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }));
+app.use('/api/v1/quizzes', express.json({ limit: '12mb' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -63,6 +74,13 @@ app.use('/api/v1/schedule', scheduleRoutes);
 app.use('/api/v1/push', pushRoutes);
 app.use('/api/v1/cgpa', cgpaRoutes);
 app.use('/api/v1/libraries', libraryRoutes);
+app.use('/api/v1/ai', aiRoutes);
+app.use('/api/v1/quizzes', quizRoutes);
+app.use('/api/v1/flashcards', flashcardRoutes);
+app.use('/api/v1/home', homeRoutes);
+app.use('/api/v1/progress', progressRoutes);
+app.use('/api/v1/billing', billingRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 // ── Global error handler (must be last) ───────────────────────────────────────
 app.use(errorHandler);

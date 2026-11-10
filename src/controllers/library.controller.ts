@@ -4,6 +4,10 @@ import env from '../config/env';
 import Library from '../models/library.model';
 import LibraryFile from '../models/libraryFile.model';
 import Material from '../models/material.model';
+import MaterialChunk from '../models/materialChunk.model';
+import ReadingProgress from '../models/readingProgress.model';
+import QuizBankItem from '../models/quizBankItem.model';
+import FlashcardBankItem from '../models/flashcardBankItem.model';
 import { AuthRequest } from '../types/auth';
 import {
   ILibrary,
@@ -13,6 +17,8 @@ import {
   MATERIAL_CATEGORIES,
   MaterialCategory,
 } from '../types/library';
+import { recordActivity } from '../utils/activity';
+import { releaseMaterials, storeUpload } from '../utils/materials';
 import { planFor, storageUsed, usageFor } from '../utils/plan';
 import { sendError, sendSuccess } from '../utils/response';
 import { createUploadUrl, deleteObject, getObject, moveObject, readObject } from '../utils/storage';
@@ -116,21 +122,12 @@ const readLibraryFields = (body: Record<string, unknown>, partial: boolean) => {
  * Deletes stored files nobody points to anymore. A file shared by several
  * libraries (or students) stays until the last one lets go of it.
  */
-const releaseMaterials = async (materialIds: (Types.ObjectId | null)[]) => {
-  const unique = [...new Set(materialIds.filter(Boolean).map(String))];
-
-  for (const id of unique) {
-    if (await LibraryFile.exists({ material: id })) continue;
-    const material = await Material.findByIdAndDelete(id);
-    // TODO: when AI processing lands, also delete this material's chunks and topic map
-    if (material) await deleteObject(material.storagePath);
-  }
-};
 
 /** Removes library entries and anything they leave behind in the bucket. */
 const removeFiles = async (files: ILibraryFile[]) => {
   if (files.length === 0) return;
   await LibraryFile.deleteMany({ _id: { $in: files.map((file) => file._id) } });
+  await ReadingProgress.deleteMany({ file: { $in: files.map((file) => file._id) } });
   await Promise.all(files.filter((file) => file.uploadPath).map((file) => deleteObject(file.uploadPath as string)));
   await releaseMaterials(files.map((file) => file.material));
 };
@@ -366,25 +363,12 @@ export const completeUpload = async (req: AuthRequest, res: Response, next: Next
     }
 
     // The same file already stored (by anyone)? Point to it and drop the new copy
-    const fingerprint = { md5Hash: stored.md5Hash, crc32c: stored.crc32c, size: stored.size };
-    let material = await Material.findOne(fingerprint);
-
-    if (material) {
-      await deleteObject(uploadPath);
-    } else {
-      const id = new Types.ObjectId();
-      const storagePath = `materials/${id}`;
-      await moveObject(uploadPath, storagePath);
-      try {
-        material = await Material.create({ _id: id, storagePath, contentType: stored.contentType, ...fingerprint });
-      } catch (error) {
-        // Someone stored the same file a moment ago: use theirs
-        if ((error as { code?: number }).code !== 11000) throw error;
-        await deleteObject(storagePath);
-        material = await Material.findOne(fingerprint);
-        if (!material) throw error;
-      }
+    const result = await storeUpload(uploadPath);
+    if (!result) {
+      sendError(res, "The upload hasn't finished yet", 409);
+      return;
     }
+    const { material } = result;
 
     file.material = material._id as Types.ObjectId;
     file.size = stored.size;
@@ -507,11 +491,14 @@ export const moveFile = async (req: AuthRequest, res: Response, next: NextFuncti
     const duplicate = await LibraryFile.findOne({ library: target._id, material: file.material });
     if (duplicate) {
       await file.deleteOne();
+      // Reading position carries over to the copy that stays
+      await ReadingProgress.updateOne({ file: file._id }, { $set: { file: duplicate._id, library: target._id } }).catch(() => undefined);
       sendSuccess(res, { file: toPublicFile(duplicate) }, 'File moved');
       return;
     }
 
     file.library = target._id as Types.ObjectId;
+    await ReadingProgress.updateMany({ file: file._id }, { $set: { library: target._id } });
     await file.save();
     sendSuccess(res, { file: toPublicFile(file) }, 'File moved');
   } catch (error) {
@@ -589,6 +576,49 @@ export const getFileContent = async (req: AuthRequest, res: Response, next: Next
     readObject(material.storagePath)
       .on('error', (error) => (res.headersSent ? res.destroy(error) : next(error)))
       .pipe(res);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Saves where the student is in a file, for "Continue studying" on Home. The
+ * viewer calls it when the page changes (a few seconds apart is plenty).
+ * Counts as a study day.
+ */
+export const saveProgress = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+    const file = await findOwnFile(userId, req.params.id, req.params.fileId);
+    if (!file || file.status !== 'ready') {
+      sendError(res, 'File not found', 404);
+      return;
+    }
+    const page = Number(req.body?.page);
+    const pageCount = req.body?.pageCount === undefined ? undefined : Number(req.body.pageCount);
+    if (!Number.isInteger(page) || page < 1 || page > 100_000) {
+      sendError(res, 'page must be a whole number from 1', 400);
+      return;
+    }
+    if (pageCount !== undefined && (!Number.isInteger(pageCount) || pageCount < page)) {
+      sendError(res, 'pageCount must be a whole number, at least page', 400);
+      return;
+    }
+
+    const progress = await ReadingProgress.findOneAndUpdate(
+      { user: userId, file: file._id },
+      {
+        $set: { library: file.library, page, lastOpenedAt: new Date(), ...(pageCount !== undefined && { pageCount }) },
+        $max: { furthestPage: page },
+      },
+      { upsert: true, new: true }
+    );
+    void recordActivity(userId, 'reading');
+    sendSuccess(res, {
+      page: progress.page,
+      pageCount: progress.pageCount,
+      furthestPage: progress.furthestPage,
+    });
   } catch (error) {
     next(error);
   }

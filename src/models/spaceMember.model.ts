@@ -11,6 +11,8 @@ const spaceMemberSchema = new Schema<ISpaceMember>(
     joinedAt: { type: Date, default: Date.now },
     onHome: { type: Boolean },
     schedulePrefs: { type: Schema.Types.Mixed, default: undefined },
+    // Courses this member doesn't take (electives): no warm-ups for them
+    mutedCourses: { type: [Schema.Types.ObjectId], default: [] },
   },
   { timestamps: true }
 );

@@ -39,6 +39,17 @@ export interface IUser extends Document {
   role: UserRole;
   plan: PlanId;
   planExpiresAt: Date | null;
+  /** AI energy in the tank as of `aiEnergyAt`; it refills from there. Null means a full tank. */
+  aiEnergy: number | null;
+  aiEnergyAt: Date | null;
+  /** Bought top-ups. Used only when the tank is empty, and never expire. */
+  aiReserve: number;
+  /** IANA timezone from the app (e.g. Africa/Lagos), for streaks and "this week". */
+  timezone: string | null;
+  /** Pre-class warm-up quizzes, on unless turned off. */
+  warmups: boolean;
+  /** Push and email switches per notification category. Missing ones use DEFAULT_PREFS. */
+  notificationPrefs?: Partial<Record<string, Partial<{ push: boolean; email: boolean }>>>;
   isVerified: boolean;
   onboardingStatus: OnboardingStatus;
   academicProfile: AcademicProfile;

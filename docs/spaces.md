@@ -378,3 +378,27 @@ Signing in as a test user on a new device sends a code to that address, so it on
 - `scheduleentries`: one row per class, test or exam.
 - `pushsubscriptions`: one row per device that allowed notifications.
 - `reminderlogs`: reminders already sent; rows expire after a week.
+
+
+## Course materials (files)
+
+Course materials are real files. Every member can open them, the AI can read them, and they feed the class's warm-ups. Uploading takes 3 steps, like libraries:
+
+1. `POST /spaces/:slug/courses/:courseId/uploads` with `{ "name": "Lecture 3.pdf", "size": 3145728, "contentType": "application/pdf" }` → `{ material, uploadUrl }`
+2. `PUT` the file to `uploadUrl` (no auth header).
+3. `POST /spaces/:slug/materials/:materialId/complete` → `{ material }`. Other members are notified.
+
+Rules for uploading:
+- Accepts PDF, Word (.doc/.docx), PowerPoint (.ppt/.pptx), Keynote, EPUB and text files.
+- The owner and admins can always upload; members can when the space allows it (`rules.membersCanUpload`).
+- Counts against the **uploader's** storage (the same file anywhere counts once).
+- An upload that never finishes is removed after a day.
+
+| Action | Request |
+|---|---|
+| Open or download (any member) | `GET /spaces/:slug/materials/:materialId/content` |
+| Save to one of my libraries | `POST /spaces/:slug/materials/:materialId/save` with `{ "libraryId": "…" }` → `{ fileId, libraryId }`. Uses the same stored file, so nothing is uploaded again |
+| Rename | `PATCH /spaces/:slug/materials/:materialId` with `{ "title": "…" }` |
+| Remove | `DELETE /spaces/:slug/materials/:materialId`. The file itself is deleted only when no library or course uses it any more |
+
+In the space, each material now has `size`, `status` (`uploading` shows only to the uploader, then `ready`; `legacy` means it was added by name before uploads existed) and `hasFile`.
