@@ -20,8 +20,14 @@ const call = async <T>(method: 'GET' | 'POST', path: string, body?: unknown, ide
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    const message = data?.message ?? data?.error?.message ?? `Bachs returned ${response.status}`;
-    throw new Error(message);
+    // Bachs errors use `detail` / `error_code`; older shapes used `message`.
+    const message =
+      data?.detail ??
+      data?.message ??
+      data?.error?.message ??
+      data?.error_code ??
+      `Bachs returned ${response.status}`;
+    throw new Error(typeof message === 'string' ? message : JSON.stringify(message));
   }
   return data as T;
 };

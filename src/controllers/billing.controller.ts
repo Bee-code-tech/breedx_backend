@@ -217,8 +217,15 @@ export const startCheckout = async (req: AuthRequest, res: Response, next: NextF
     } catch (error) {
       payment.status = 'failed';
       await payment.save();
-      console.error('Bachs checkout failed:', (error as Error).message);
-      sendError(res, "We couldn't open checkout. Please try again.", 502, { code: 'CHECKOUT_FAILED' });
+      const reason = (error as Error).message || 'unknown';
+      console.error('Bachs checkout failed:', reason);
+      // Surface Bachs' own reason so a bad key / amount / URL isn't a mystery
+      sendError(
+        res,
+        reason.length <= 180 ? reason : "We couldn't open checkout. Please try again.",
+        502,
+        { code: 'CHECKOUT_FAILED', detail: reason }
+      );
     }
   } catch (error) {
     next(error);
