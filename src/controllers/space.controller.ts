@@ -416,7 +416,7 @@ export const previewInvite = async (req: AuthRequest, res: Response, next: NextF
 
 // GET /api/v1/spaces/public/:code — no sign-in. What a shared invite link
 // shows before anyone joins (link previews, the invite page): no member list,
-// only first names and photos of a few members.
+// only the creator and the names and photos of a few members.
 export const publicInvite = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const code = String(req.params.code).toLowerCase();
@@ -425,7 +425,7 @@ export const publicInvite = async (req: AuthRequest, res: Response, next: NextFu
     if (!space) return sendError(res, 'No space matches that link', 404);
     const [members, owner] = await Promise.all([
       activeMembers(space._id as Types.ObjectId),
-      User.findById(space.owner).select('firstName avatar').lean(),
+      User.findById(space.owner).select('firstName lastName avatar').lean(),
     ]);
     const active = members.filter((member) => member.status === 'active' && member.user);
     res.set('Cache-Control', 'public, max-age=300');
@@ -436,10 +436,11 @@ export const publicInvite = async (req: AuthRequest, res: Response, next: NextFu
       imageUrl: space.imageUrl ?? null,
       memberCount: active.length,
       courseCount: space.courses?.length ?? 0,
-      createdBy: owner?.firstName ?? null,
+      createdBy: owner ? `${owner.firstName} ${owner.lastName ?? ''}`.trim() : null,
+      creatorAvatarUrl: owner?.avatar ?? null,
       createdAt: space.createdAt,
       faces: active.slice(0, 4).map((member) => ({
-        name: member.user?.firstName ?? '',
+        name: fullName(member.user),
         avatarUrl: member.user?.avatar ?? null,
       })),
     });
