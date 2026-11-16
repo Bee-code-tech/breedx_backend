@@ -19,7 +19,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # The Google AI packages need Node 22 or newer
+          node-version: '22'
           cache: 'npm'
 
       # 3. Install dependencies
@@ -41,13 +42,23 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 20m
           script: |
             set -e
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             cd ~/breedx_backend
-            git pull origin main
-            npm ci
-            npm run build
+            # What the server looks like, so a failure below is easy to read
+            echo "node $(node -v), npm $(npm -v)"
+            df -h ~ | tail -1
+            free -m | sed -n 2p
+            git status --short | head -20
+            # Match GitHub exactly, even if files were changed on the server
+            # (.env, node_modules and dist aren't tracked, so they stay)
+            git fetch origin main
+            git reset --hard origin/main
+            npm ci --no-audit --no-fund
+            # Small servers can run out of memory while compiling
+            NODE_OPTIONS=--max-old-space-size=1536 npm run build
             pm2 restart ecosystem.config.js --update-env || pm2 start ecosystem.config.js
             pm2 save
