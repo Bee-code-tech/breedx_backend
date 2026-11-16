@@ -3,3 +3,6 @@ dist/
 .env
 *.log
 .DS_Store
+
+# Tutor evaluation reports (local)
+evals/tutor/results/

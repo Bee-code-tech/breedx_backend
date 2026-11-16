@@ -61,7 +61,7 @@ export const topicsOf = (map: TopicMap | null): Topic[] =>
   );
 
 /** The text of a topic's pages, in order, cut to a size the AI reads well. */
-const contextOf = async (materialId: Types.ObjectId, topic: Topic) => {
+export const contextOf = async (materialId: Types.ObjectId, topic: Topic) => {
   const chunks = await MaterialChunk.find({
     material: materialId,
     pageStart: { $lte: topic.pageEnd },
@@ -277,7 +277,7 @@ const squash = (text: string) =>
     .trim();
 
 /** True when the quote really appears, word for word, in the notes. */
-const quoted = (quote: string, context: string) => {
+export const quoted = (quote: string, context: string) => {
   const needle = squash(quote).replace(/^["']|["'.]$/g, '');
   return needle.length >= MIN_QUOTE && squash(context).includes(needle);
 };

@@ -16,6 +16,7 @@ import User from '../models/user.model';
 import { AuthRequest } from '../types/auth';
 import { bachsReady, createCheckout, getCheckout, toPaymentStatus, verifyWebhook } from '../utils/bachs';
 import { notify } from '../utils/notify';
+import { rewardReferral } from '../utils/referrals';
 import { activePlan, planFor, storageUsed } from '../utils/plan';
 import { energyFor, startOfToday } from '../utils/ai/energy';
 import AiUsage from '../models/aiUsage.model';
@@ -103,6 +104,8 @@ const fulfil = async (paymentId: unknown) => {
       },
       { push: true, urgent: true, email: { action: 'See your plan' } }
     );
+    // A friend's first payment: both of them get a free month
+    void rewardReferral(payment.user);
   }
   return payment;
 };

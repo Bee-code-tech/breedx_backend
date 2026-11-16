@@ -4,17 +4,16 @@ import env from '../config/env';
 import Library from '../models/library.model';
 import LibraryFile from '../models/libraryFile.model';
 import Material from '../models/material.model';
-import SpaceMember from '../models/spaceMember.model';
 import User from '../models/user.model';
 import { AuthRequest } from '../types/auth';
 import { MaterialCategory } from '../types/library';
 import { ISpace, ISpaceMaterial, MaterialFileType, SpaceRole } from '../types/space';
 import { storeUpload, uploadedSize } from '../utils/materials';
-import { notify } from '../utils/notify';
 import { planFor, storageUsed } from '../utils/plan';
 import { sendError, sendSuccess } from '../utils/response';
 import { createUploadUrl, readObject } from '../utils/storage';
 import { loadSpace } from './space.controller';
+import { notifySpace } from '../utils/spaceNotify';
 
 const NAME_MAX = 200;
 // File types a course material can be
@@ -205,24 +204,30 @@ export const completeMaterialUpload = async (req: AuthRequest, res: Response, ne
     await space.save();
     sendSuccess(res, { material: toPublicMaterial(material, course._id) }, 'Material added');
 
-    // Everyone else in the space sees new materials under the bell, a day's worth in one
-    const members = await SpaceMember.find({ space: space._id, status: 'active', user: { $ne: new Types.ObjectId(userId) } }).lean();
+    // Everyone else in the space hears about it, a day's uploads in one item
     const label = course.code || course.title;
-    void notify(
-      members.map((member) => member.user!).filter(Boolean),
-      {
-        category: 'spaces',
-        kind: 'space-materials',
-        title: '',
-        link: `/classes/${space.slug}?tab=materials`,
-        image: space.imageUrl ?? null,
-        group: {
-          key: `space-materials:${space._id}`,
-          title: (count) => (count === 1 ? `${material.uploadedByName} added ${material.title} to ${label}` : `New materials in ${space.name}`),
-          body: (count) => (count === 1 ? space.name : `${count} uploads today`),
-        },
-      }
-    );
+    const pastQuestion = material.kind === 'past-question';
+    void notifySpace(space, userId, {
+      kind: pastQuestion ? 'space-past-question' : 'space-materials',
+      title: (who) =>
+        pastQuestion
+          ? `${who} added a ${label} past question${material.year ? ` (${material.year})` : ''}`
+          : `${who} added ${material.title} to ${label}`,
+      body: pastQuestion ? `${material.title} · practise it as a CBT` : space.name,
+      tab: pastQuestion ? 'past questions' : 'courses',
+      group: {
+        key: `${pastQuestion ? 'space-past-questions' : 'space-materials'}:${space._id}`,
+        title: (count, who) =>
+          count === 1
+            ? pastQuestion
+              ? `${who} added a ${label} past question`
+              : `${who} added ${material.title} to ${label}`
+            : pastQuestion
+              ? `New past questions in ${space.name}`
+              : `New materials in ${space.name}`,
+        body: (count) => (count === 1 ? space.name : `${count} uploads today`),
+      },
+    });
   } catch (error) {
     next(error);
   }

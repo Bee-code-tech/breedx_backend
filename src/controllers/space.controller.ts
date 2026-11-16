@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { Types } from 'mongoose';
 import Space from '../models/space.model';
+import Announcement from '../models/announcement.model';
 import ScheduleEntry from '../models/scheduleEntry.model';
 import SpaceMember from '../models/spaceMember.model';
 import User from '../models/user.model';
@@ -17,6 +18,7 @@ import {
 import env from '../config/env';
 import { sendNotificationEmail } from '../utils/mail';
 import { notify } from '../utils/notify';
+import { notifySpace } from '../utils/spaceNotify';
 import { releaseMaterials } from '../utils/materials';
 import { planFor } from '../utils/plan';
 import { sendError, sendSuccess } from '../utils/response';
@@ -343,6 +345,13 @@ export const updateSpace = async (req: AuthRequest, res: Response, next: NextFun
 
     await space.save();
     await respondSpace(res, space, userId, membership.role, 'Space updated');
+    void notifySpace(space, userId, {
+      kind: 'space-updated',
+      title: (who) =>
+        'imageUrl' in body && !settingsKeys.length
+          ? `${who} changed the photo of ${space.name}`
+          : `${who} updated ${space.name}`,
+    });
   } catch (error) {
     next(error);
   }
@@ -354,9 +363,16 @@ export const deleteSpace = async (req: AuthRequest, res: Response, next: NextFun
     const found = await loadSpace(req, res);
     if (!found) return;
     if (found.membership.role !== 'owner') return sendError(res, 'Only the owner can delete this space', 403);
+    // Told before the members are gone; the link then just says it's not there
+    await notifySpace(found.space, found.userId, {
+      kind: 'space-deleted',
+      title: (who) => `${who} deleted ${found.space.name}`,
+      body: 'Its courses, materials and schedule are gone.',
+    });
     await Promise.all([
       SpaceMember.deleteMany({ space: found.space._id }),
       ScheduleEntry.deleteMany({ space: found.space._id }),
+      Announcement.deleteMany({ space: found.space._id }),
       found.space.deleteOne(),
     ]);
     sendSuccess(res, null, 'Space deleted');
@@ -377,6 +393,11 @@ export const leaveSpace = async (req: AuthRequest, res: Response, next: NextFunc
       ScheduleEntry.deleteMany({ space: found.space._id, kind: 'study', owner: found.userId }),
     ]);
     sendSuccess(res, null, 'You left the space');
+    void notifySpace(found.space, found.userId, {
+      kind: 'space-left',
+      title: (who) => `${who} left ${found.space.name}`,
+      tab: 'members',
+    });
   } catch (error) {
     next(error);
   }
@@ -494,7 +515,8 @@ export const joinSpace = async (req: AuthRequest, res: Response, next: NextFunct
           key: `space-joined:${space._id}`,
           title: (count) => (count === 1 ? `${name} joined ${space.name}` : `${count} people joined ${space.name}`),
         },
-      }
+      },
+      { push: true }
     );
   } catch (error) {
     if ((error as { code?: number }).code === 11000) return sendError(res, "You're already in this space", 409);
@@ -603,6 +625,15 @@ export const setMemberRole = async (req: AuthRequest, res: Response, next: NextF
     target.role = role;
     await target.save();
     await respondSpace(res, space, userId, membership.role, 'Role updated');
+    const promoted = target.user ? await User.findById(target.user).select('firstName lastName').lean() : null;
+    void notifySpace(space, userId, {
+      kind: 'space-role',
+      title: (who) =>
+        role === 'admin'
+          ? `${who} made ${promoted ? fullName(promoted) : 'a member'} an admin`
+          : `${promoted ? fullName(promoted) : 'A member'} is no longer an admin`,
+      tab: 'members',
+    });
   } catch (error) {
     next(error);
   }
@@ -628,12 +659,27 @@ export const removeMember = async (req: AuthRequest, res: Response, next: NextFu
       target.user ? ScheduleEntry.deleteMany({ space: space._id, kind: 'study', owner: target.user }) : null,
     ]);
     await respondSpace(res, space, userId, membership.role, 'Member removed');
+    if (target.status === 'active' && target.user) {
+      const gone = await User.findById(target.user).select('firstName lastName').lean();
+      void notifySpace(
+        space,
+        userId,
+        {
+          kind: 'space-member-removed',
+          title: (who) => `${who} removed ${gone ? fullName(gone) : 'a member'} from ${space.name}`,
+          tab: 'members',
+        },
+        [target.user]
+      );
+    }
   } catch (error) {
     next(error);
   }
 };
 
 // ── Courses and materials ─────────────────────────────────────────────────────
+
+const courseLabel = (course: { code?: string; title: string }) => course.code || course.title;
 
 const LECTURER_MAX = 120;
 
@@ -659,6 +705,12 @@ export const createCourse = async (req: AuthRequest, res: Response, next: NextFu
     space.courses.unshift({ title: values.title, code: values.code, lecturer: values.lecturer, materials: [] });
     await space.save();
     await respondSpace(res, space, userId, membership.role, 'Course added', 201);
+    void notifySpace(space, userId, {
+      kind: 'space-course',
+      title: (who) => `${who} added the course ${courseLabel(values)}`,
+      body: values.lecturer ? `${values.title} · ${values.lecturer}` : values.title,
+      tab: 'courses',
+    });
   } catch (error) {
     next(error);
   }
@@ -680,6 +732,12 @@ export const updateCourse = async (req: AuthRequest, res: Response, next: NextFu
     course.lecturer = values.lecturer;
     await space.save();
     await respondSpace(res, space, userId, membership.role, 'Course updated');
+    void notifySpace(space, userId, {
+      kind: 'space-course',
+      title: (who) => `${who} updated ${courseLabel(course)}`,
+      body: course.lecturer ? `${course.title} · ${course.lecturer}` : course.title,
+      tab: 'courses',
+    });
   } catch (error) {
     next(error);
   }
@@ -696,9 +754,15 @@ export const deleteCourse = async (req: AuthRequest, res: Response, next: NextFu
     if (!course) return sendError(res, 'Course not found', 404);
     // Its timetable entries go with it
     await ScheduleEntry.deleteMany({ space: space._id, course: course._id });
+    const removed = courseLabel(course);
     course.deleteOne();
     await space.save();
     await respondSpace(res, space, userId, membership.role, 'Course deleted');
+    void notifySpace(space, userId, {
+      kind: 'space-course',
+      title: (who) => `${who} removed the course ${removed}`,
+      tab: 'courses',
+    });
   } catch (error) {
     next(error);
   }
@@ -758,7 +822,8 @@ export const addMaterials = async (req: AuthRequest, res: Response, next: NextFu
               : `New materials in ${space.name}`,
           body: (count) => (count === 1 ? space.name : `${count} uploads today`),
         },
-      }
+      },
+      { push: true }
     );
   } catch (error) {
     next(error);
@@ -792,6 +857,12 @@ export const renameMaterial = async (req: AuthRequest, res: Response, next: Next
     if (typeof req.body?.year === 'string') material.year = text(req.body.year).slice(0, 20);
     await space.save();
     await respondSpace(res, space, userId, membership.role, 'Material renamed');
+    const pastQuestion = material.kind === 'past-question';
+    void notifySpace(space, userId, {
+      kind: pastQuestion ? 'space-past-question' : 'space-materials',
+      title: (who) => `${who} renamed a ${pastQuestion ? 'past question' : 'file'} to ${title}`,
+      tab: pastQuestion ? 'past questions' : 'courses',
+    });
   } catch (error) {
     next(error);
   }
@@ -809,11 +880,22 @@ export const removeMaterial = async (req: AuthRequest, res: Response, next: Next
       return sendError(res, 'You can only remove materials you added', 403);
     }
     const stored = material.material;
+    // A failed upload cleaning up after itself isn't news
+    const finished = material.status !== 'uploading';
+    const removedTitle = material.title;
+    const removedPast = material.kind === 'past-question';
     material.deleteOne();
     await space.save();
     // The file goes too, unless a library or another course still has it
     if (stored) void releaseMaterials([stored]).catch((error) => console.error('Releasing a material failed:', error));
     await respondSpace(res, space, userId, membership.role, 'Material removed');
+    if (finished) {
+      void notifySpace(space, userId, {
+        kind: removedPast ? 'space-past-question' : 'space-materials',
+        title: (who) => `${who} removed ${removedTitle}`,
+        tab: removedPast ? 'past questions' : 'courses',
+      });
+    }
   } catch (error) {
     next(error);
   }

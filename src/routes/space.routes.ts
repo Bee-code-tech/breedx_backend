@@ -35,6 +35,12 @@ import {
   saveMaterialToLibrary,
   startMaterialUpload,
 } from '../controllers/spaceMaterial.controller';
+import {
+  createAnnouncement,
+  deleteAnnouncement,
+  listAnnouncements,
+  updateAnnouncement,
+} from '../controllers/announcement.controller';
 import { protect } from '../middleware/auth';
 import { refreshLimiter } from '../middleware/rateLimit';
 
@@ -72,6 +78,11 @@ router.get('/:slug/materials/:materialId/content', getMaterialContent);
 router.post('/:slug/materials/:materialId/save', saveMaterialToLibrary);
 router.patch('/:slug/materials/:materialId', renameMaterial);
 router.delete('/:slug/materials/:materialId', removeMaterial);
+
+router.get('/:slug/announcements', listAnnouncements);
+router.post('/:slug/announcements', refreshLimiter, createAnnouncement);
+router.patch('/:slug/announcements/:id', updateAnnouncement);
+router.delete('/:slug/announcements/:id', deleteAnnouncement);
 
 router.get('/:slug/schedule', getSchedule);
 router.post('/:slug/schedule', addEntry);

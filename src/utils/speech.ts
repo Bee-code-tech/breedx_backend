@@ -128,6 +128,124 @@ export const speak = async (userId: string, text: string, voice: VoiceId): Promi
   }
 };
 
+/** A saved clip's id (from its path), for the app to fetch it by. */
+const clipIdOf = (path: string) => path.slice('speech/'.length, -'.mp3'.length);
+export const clipPathOf = (id: string) => (/^[a-f0-9]{64}$/.test(id) ? `speech/${id}.mp3` : null);
+
+/**
+ * A saved clip for one tutor line, or null when this month's free voice
+ * allowance is used up (the app then speaks it with the device's voice).
+ * Tutor sessions have their own limits, so no daily allowance applies. The
+ * clip is saved before returning, so the app can fetch it straight away and
+ * replays reuse it.
+ */
+export const tutorClip = async (rawText: string, voice: VoiceId): Promise<{ id: string; tier: Tier } | null> => {
+  const text = speakable(rawText).slice(0, SPEECH_MAX_CHARS);
+  if (!text) return null;
+  const names = VOICE_NAMES[voice];
+  // TUTOR_VOICE=fast uses WaveNet first: about a second quicker per line, a little less human
+  const order: Tier[] = process.env.TUTOR_VOICE === 'fast' ? ['wavenet', 'hd'] : ['hd', 'wavenet'];
+
+  // Made before (by anyone)? Checked in parallel
+  const saved = await Promise.all(
+    order.map(async (tier) => {
+      const path = clipPath(names[tier], text);
+      return recentClips.has(clipIdOf(path)) || (await getObject(path)) ? { id: clipIdOf(path), tier } : null;
+    })
+  );
+  const found = saved.find(Boolean);
+  if (found) return found;
+
+  const chars = text.length;
+  let tier: Tier | null = null;
+  for (const candidate of order) {
+    if (await reserveMonthly(candidate, chars)) {
+      tier = candidate;
+      break;
+    }
+  }
+  if (!tier) return null;
+  try {
+    const [response] = await client.synthesizeSpeech({
+      input: { text },
+      voice: { languageCode: 'en-GB', name: names[tier] },
+      audioConfig: { audioEncoding: 'MP3' },
+    });
+    const path = clipPath(names[tier], text);
+    const data = Buffer.from(response.audioContent as Uint8Array);
+    // Served from memory straight away; the lasting copy is saved meanwhile
+    remember(clipIdOf(path), data);
+    void saveObject(path, data, 'audio/mpeg').catch((error) => console.error('Saving a tutor clip failed:', error));
+    return { id: clipIdOf(path), tier };
+  } catch (error) {
+    await releaseMonthly(tier, chars);
+    console.error('Tutor voice failed:', error);
+    return null;
+  }
+};
+
+/**
+ * Like `tutorClip`, but returns the clip's id at once and makes the audio
+ * meanwhile: the app can show the line and ask for the audio straight away,
+ * and `GET /tutor/audio/:id` waits for it. Null when this month's free voice
+ * is used up.
+ */
+export const startTutorClip = async (rawText: string, voice: VoiceId): Promise<{ id: string; tier: Tier } | null> => {
+  const text = speakable(rawText).slice(0, SPEECH_MAX_CHARS);
+  if (!text) return null;
+  const names = VOICE_NAMES[voice];
+  const order: Tier[] = process.env.TUTOR_VOICE === 'fast' ? ['wavenet', 'hd'] : ['hd', 'wavenet'];
+  for (const tier of order) {
+    const id = clipIdOf(clipPath(names[tier], text));
+    if (recentClips.has(id) || pendingClips.has(id)) return { id, tier };
+  }
+  const chars = text.length;
+  let tier: Tier | null = null;
+  for (const candidate of order) {
+    if (await reserveMonthly(candidate, chars)) {
+      tier = candidate;
+      break;
+    }
+  }
+  if (!tier) return null;
+  const chosen = tier;
+  const path = clipPath(names[chosen], text);
+  const id = clipIdOf(path);
+  const making = client
+    .synthesizeSpeech({ input: { text }, voice: { languageCode: 'en-GB', name: names[chosen] }, audioConfig: { audioEncoding: 'MP3' } })
+    .then(([response]) => {
+      const data = Buffer.from(response.audioContent as Uint8Array);
+      remember(id, data);
+      void saveObject(path, data, 'audio/mpeg').catch((error) => console.error('Saving a tutor clip failed:', error));
+      return data;
+    })
+    .catch(async (error) => {
+      await releaseMonthly(chosen, chars);
+      console.error('Tutor voice failed:', error);
+      return null;
+    })
+    .finally(() => setTimeout(() => pendingClips.delete(id), 60_000));
+  pendingClips.set(id, making);
+  return { id, tier: chosen };
+};
+
+// Clips still being made, so a request for one can wait for it
+const pendingClips = new Map<string, Promise<Buffer | null>>();
+
+/** A clip that's being made right now: wait for it (null if it failed). */
+export const pendingClip = (id: string) => pendingClips.get(id) ?? null;
+
+// The newest clips, kept in memory so the app can play them before they reach storage
+const RECENT_CLIPS = 300;
+const recentClips = new Map<string, Buffer>();
+const remember = (id: string, data: Buffer) => {
+  recentClips.set(id, data);
+  if (recentClips.size > RECENT_CLIPS) recentClips.delete(recentClips.keys().next().value as string);
+};
+
+/** A clip just made, from memory, or null to read it from storage. */
+export const recentClip = (id: string) => recentClips.get(id) ?? null;
+
 /**
  * Opens the connection to Google when the server starts, so the first student
  * to press "Read aloud" doesn't wait for it. Costs nothing.

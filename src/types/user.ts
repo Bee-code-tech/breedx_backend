@@ -1,4 +1,4 @@
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 import { PlanId } from '../config/plans';
 
 export type UserRole = 'user' | 'admin';
@@ -36,6 +36,9 @@ export interface IUser extends Document {
   avatar?: string;
   authProvider: AuthProvider;
   googleId?: string;
+  referralCode?: string;
+  referredBy?: Types.ObjectId | null;
+  referralRewardedAt?: Date | null;
   role: UserRole;
   plan: PlanId;
   planExpiresAt: Date | null;

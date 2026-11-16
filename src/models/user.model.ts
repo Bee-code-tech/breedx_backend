@@ -44,6 +44,11 @@ const userSchema = new Schema<IUser>(
       sparse: true,
       select: false,
     },
+    // Their own share code (breedx.org/r/<code>), made the first time they look
+    referralCode: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
+    // Who invited them, and when that friend got rewarded for it (once)
+    referredBy: { type: Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    referralRewardedAt: { type: Date, default: null },
     role: {
       type: String,
       enum: ['user', 'admin'],

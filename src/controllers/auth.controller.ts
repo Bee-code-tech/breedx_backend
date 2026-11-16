@@ -10,6 +10,7 @@ import { generateOTP, hashOTP, OTP_TTL_MS, OTP_MAX_ATTEMPTS, OTP_RESEND_COOLDOWN
 import { sendOTP, sendPasswordResetCode, sendWelcomeEmail } from '../utils/mail';
 import { passwordStamp, signPasswordResetToken, signSetupToken, verifyToken } from '../utils/token';
 import { verifyGoogleCredential } from '../utils/google';
+import { referrerFor } from '../utils/referrals';
 import env from '../config/env';
 import { beginLogin, clearRefreshCookie, getOrCreateDeviceId, issueSession, toPublicUser } from '../utils/session';
 
@@ -84,13 +85,19 @@ export const register = async (
       existingUser.lastName = lastName;
       existingUser.country = country;
       existingUser.isVerified = false;
+      // Signed up again from a friend's link: count it, unless one already does
+      if (!existingUser.referredBy) {
+        existingUser.referredBy = await referrerFor(req.body.referralCode, email);
+      }
       await issueOTP(existingUser);
 
       sendSuccess(res, { email }, 'Verification code sent. Please check your email.');
       return;
     }
 
-    const user = new User({ firstName, lastName, email, country, authProvider: 'local' });
+    // From a friend's link (breedx.org/r/<code>): they're rewarded when this account first pays
+    const referredBy = await referrerFor(req.body.referralCode, email);
+    const user = new User({ firstName, lastName, email, country, authProvider: 'local', referredBy });
     await issueOTP(user);
 
     sendSuccess(res, { email }, 'Registration successful. Please check your email for verification code.', 201);
@@ -473,6 +480,7 @@ export const googleAuth = async (
         googleId: profile.googleId,
         authProvider: 'google',
         isVerified: true,
+        referredBy: await referrerFor(req.body.referralCode, profile.email),
         ...(profile.picture && { avatar: profile.picture }),
       });
       await newUser.save();

@@ -22,7 +22,9 @@ import flashcardRoutes from './routes/flashcard.routes';
 import homeRoutes from './routes/home.routes';
 import progressRoutes from './routes/progress.routes';
 import billingRoutes from './routes/billing.routes';
+import referralRoutes from './routes/referral.routes';
 import notificationRoutes from './routes/notification.routes';
+import tutorRoutes from './routes/tutor.routes';
 
 // Middleware imports
 import { errorHandler } from './middleware/errorHandler';
@@ -80,7 +82,9 @@ app.use('/api/v1/flashcards', flashcardRoutes);
 app.use('/api/v1/home', homeRoutes);
 app.use('/api/v1/progress', progressRoutes);
 app.use('/api/v1/billing', billingRoutes);
+app.use('/api/v1/referrals', referralRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/tutor', tutorRoutes);
 
 // ── Global error handler (must be last) ───────────────────────────────────────
 app.use(errorHandler);

@@ -17,6 +17,15 @@ export interface PlanLimits {
   quizzes: QuizAllowance;
   /** Characters a day read aloud in a human voice (cached clips are free). Then the phone's own voice. */
   speechPerDay: number;
+  tutor: TutorAllowance;
+}
+
+export interface TutorAllowance {
+  /** Sessions a month. Free gets one trial, ever (`lifetime`). */
+  sessions: number;
+  lifetime: boolean;
+  /** Length of a session. A running session gets 2 extra minutes to finish. */
+  minutes: number;
 }
 
 /** Daily quiz limits, counted per UTC day. `null` means unlimited. */
@@ -54,6 +63,7 @@ export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
     ai: { tank: 30_000, refillPerDay: 10_000 }, // ≈ 300k a month
     quizzes: { createsPerDay: 2, privateTakesPerDay: 1, publicTakesPerDay: 4 },
     speechPerDay: 2_500, // about 3 answers
+    tutor: { sessions: 1, lifetime: true, minutes: 15 },
   },
   scholar: {
     libraries: 10,
@@ -63,6 +73,7 @@ export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
     ai: { tank: 150_000, refillPerDay: 50_000 }, // ≈ 1.5M a month
     quizzes: { createsPerDay: 10, privateTakesPerDay: 10, publicTakesPerDay: null },
     speechPerDay: 25_000, // about 30 answers
+    tutor: { sessions: 3, lifetime: false, minutes: 15 },
   },
   elite: {
     libraries: null,
@@ -72,5 +83,6 @@ export const PLAN_LIMITS: Record<PlanId, PlanLimits> = {
     ai: { tank: 400_000, refillPerDay: 135_000 }, // ≈ 4M a month
     quizzes: { createsPerDay: null, privateTakesPerDay: null, publicTakesPerDay: null },
     speechPerDay: 60_000, // about 75 answers
+    tutor: { sessions: 12, lifetime: false, minutes: 30 },
   },
 };
