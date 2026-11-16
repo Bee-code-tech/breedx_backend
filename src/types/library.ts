@@ -25,6 +25,8 @@ export const MATERIAL_CATEGORIES = {
   texts: ['pdf', 'epub', 'txt', 'md', 'doc', 'docx'],
   slides: ['ppt', 'pptx', 'key'],
   'past-questions': ['pdf', 'doc', 'docx', 'txt'],
+  // Photos of notes, whiteboards and handouts; read by the AI like a scanned page
+  images: ['png', 'jpg', 'jpeg', 'webp', 'heic'],
 } as const;
 
 export type MaterialCategory = keyof typeof MATERIAL_CATEGORIES;

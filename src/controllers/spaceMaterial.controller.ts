@@ -28,9 +28,19 @@ const EXTENSIONS: Record<string, MaterialFileType> = {
   ppt: 'ppt',
   pptx: 'ppt',
   key: 'ppt',
+  png: 'image',
+  jpg: 'image',
+  jpeg: 'image',
+  webp: 'image',
+  heic: 'image',
 };
 // The library category a course material goes under when saved to a library
-const CATEGORY_FOR: Record<MaterialFileType, MaterialCategory> = { pdf: 'pdfs', doc: 'texts', ppt: 'slides' };
+const CATEGORY_FOR: Record<MaterialFileType, MaterialCategory> = {
+  pdf: 'pdfs',
+  doc: 'texts',
+  ppt: 'slides',
+  image: 'images',
+};
 
 const isId = (value: unknown): value is string => typeof value === 'string' && Types.ObjectId.isValid(value);
 const canManage = (role: SpaceRole) => role === 'owner' || role === 'admin';

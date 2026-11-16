@@ -190,6 +190,7 @@ const fileTypeFor = (value: unknown, title: string): MaterialFileType => {
   const extension = title.split('.').pop()?.toLowerCase() ?? '';
   if (['ppt', 'pptx', 'key'].includes(extension)) return 'ppt';
   if (['doc', 'docx', 'txt', 'rtf', 'odt'].includes(extension)) return 'doc';
+  if (['png', 'jpg', 'jpeg', 'webp', 'heic'].includes(extension)) return 'image';
   return 'pdf';
 };
 

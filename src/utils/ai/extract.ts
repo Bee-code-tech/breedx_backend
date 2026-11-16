@@ -37,6 +37,45 @@ const CONTENT_TYPES: Record<string, string> = {
   'text/markdown': 'md',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+};
+
+const IMAGE_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  heic: 'image/heic',
+};
+
+/** A photo of notes, a whiteboard or a handout: the AI writes out what's on it. */
+const readImage = async (
+  buffer: Buffer,
+  mimeType: string,
+  onProgress: (done: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<ExtractedText> => {
+  onProgress(0, 1);
+  const result = await generate({
+    engine: BACKGROUND_ENGINE,
+    temperature: 0,
+    signal,
+    prompt: [
+      { inlineData: { mimeType, data: buffer.toString('base64') } },
+      {
+        text:
+          "This is a photo of a student's study material (notes, a whiteboard, a slide or a handout). " +
+          'Write out all the text exactly, keeping headings, lists and equations. Describe diagrams, charts or ' +
+          'tables in one short line in [square brackets]. Write [blank] if there is no study content. Output nothing else.',
+      },
+    ],
+  });
+  onProgress(1, 1);
+  const text = tidy(result.text).replace(/^\[blank\]$/i, '');
+  return { unit: 'page', pages: [text], outline: [], tokens: result.tokens, scanned: 1 };
 };
 
 const extensionFor = (fileName: string, contentType: string) => {
@@ -250,6 +289,12 @@ export const extractText = async (
       const { value } = await mammoth.extractRawText({ buffer });
       return { unit: 'section', pages: toSections(value), outline: [], tokens: ZERO_TOKENS };
     }
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'webp':
+    case 'heic':
+      return readImage(buffer, IMAGE_TYPES[extension], onScanProgress, signal);
     case 'txt':
     case 'md':
       return { unit: 'section', pages: toSections(buffer.toString('utf8')), outline: [], tokens: ZERO_TOKENS };

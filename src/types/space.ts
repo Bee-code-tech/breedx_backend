@@ -6,7 +6,7 @@ export type SpaceRole = (typeof SPACE_ROLES)[number];
 export const SPACE_PRIVACY = ['public', 'private'] as const;
 export type SpacePrivacy = (typeof SPACE_PRIVACY)[number];
 
-export const MATERIAL_FILE_TYPES = ['pdf', 'doc', 'ppt'] as const;
+export const MATERIAL_FILE_TYPES = ['pdf', 'doc', 'ppt', 'image'] as const;
 export type MaterialFileType = (typeof MATERIAL_FILE_TYPES)[number];
 
 export const SCHEDULE_KINDS = ['timetable', 'test', 'exam', 'venue', 'deadline', 'cancelled', 'event'] as const;
