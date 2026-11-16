@@ -414,6 +414,40 @@ export const previewInvite = async (req: AuthRequest, res: Response, next: NextF
   }
 };
 
+// GET /api/v1/spaces/public/:code — no sign-in. What a shared invite link
+// shows before anyone joins (link previews, the invite page): no member list,
+// only first names and photos of a few members.
+export const publicInvite = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const code = String(req.params.code).toLowerCase();
+    if (!/^[a-z0-9-]{3,80}$/.test(code)) return sendError(res, 'No space matches that link', 404);
+    const space = await Space.findOne({ slug: code }).select('slug name school imageUrl owner courses createdAt').lean();
+    if (!space) return sendError(res, 'No space matches that link', 404);
+    const [members, owner] = await Promise.all([
+      activeMembers(space._id as Types.ObjectId),
+      User.findById(space.owner).select('firstName avatar').lean(),
+    ]);
+    const active = members.filter((member) => member.status === 'active' && member.user);
+    res.set('Cache-Control', 'public, max-age=300');
+    sendSuccess(res, {
+      slug: space.slug,
+      name: space.name,
+      school: space.school,
+      imageUrl: space.imageUrl ?? null,
+      memberCount: active.length,
+      courseCount: space.courses?.length ?? 0,
+      createdBy: owner?.firstName ?? null,
+      createdAt: space.createdAt,
+      faces: active.slice(0, 4).map((member) => ({
+        name: member.user?.firstName ?? '',
+        avatarUrl: member.user?.avatar ?? null,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // POST /api/v1/spaces/invite/:code/join
 export const joinSpace = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {

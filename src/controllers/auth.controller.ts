@@ -473,6 +473,7 @@ export const googleAuth = async (
         googleId: profile.googleId,
         authProvider: 'google',
         isVerified: true,
+        ...(profile.picture && { avatar: profile.picture }),
       });
       await newUser.save();
 
@@ -502,6 +503,8 @@ export const googleAuth = async (
     }
 
     user.googleId = profile.googleId;
+    // No photo yet: use their Google one. A photo they chose is never replaced
+    if (!user.avatar && profile.picture) user.avatar = profile.picture;
     await user.save();
 
     // Same device rules as password login

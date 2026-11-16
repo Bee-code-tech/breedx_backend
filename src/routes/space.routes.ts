@@ -11,6 +11,7 @@ import {
   leaveSpace,
   listSpaces,
   previewInvite,
+  publicInvite,
   removeMaterial,
   removeMember,
   renameMaterial,
@@ -38,6 +39,9 @@ import { protect } from '../middleware/auth';
 import { refreshLimiter } from '../middleware/rateLimit';
 
 const router = Router();
+
+// Public: what an invite link shows before signing in
+router.get('/public/:code', publicInvite);
 
 router.use(protect);
 
