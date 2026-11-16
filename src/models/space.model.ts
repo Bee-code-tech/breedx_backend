@@ -2,6 +2,7 @@ import { Schema, model } from 'mongoose';
 import {
   ISpace,
   MATERIAL_FILE_TYPES,
+  MATERIAL_KINDS,
   SCHEDULE_KINDS,
   SPACE_PRIVACY,
 } from '../types/space';
@@ -19,6 +20,9 @@ const materialSchema = new Schema(
     status: { type: String, enum: ['uploading', 'ready', 'legacy'], default: 'legacy' },
     // Where the browser uploads to, while uploading
     uploadPath: { type: String, default: null },
+    kind: { type: String, enum: MATERIAL_KINDS, default: 'material' },
+    lecturer: { type: String, default: '', trim: true },
+    year: { type: String, default: '', trim: true },
   },
   { _id: true }
 );
@@ -27,6 +31,7 @@ const courseSchema = new Schema(
   {
     title: { type: String, required: true, trim: true },
     code: { type: String, default: '', trim: true },
+    lecturer: { type: String, default: '', trim: true },
     materials: { type: [materialSchema], default: [] },
   },
   { _id: true }

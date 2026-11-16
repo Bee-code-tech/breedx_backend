@@ -71,6 +71,9 @@ export const toPublicMaterial = (material: ISpaceMaterial, courseId: Types.Objec
   // False for old materials added by name only, before uploads
   hasFile: Boolean(material.material),
   uploadedAt: material.uploadedAt,
+  kind: material.kind ?? 'material',
+  lecturer: material.lecturer ?? '',
+  year: material.year ?? '',
 });
 
 /**
@@ -139,6 +142,10 @@ export const startMaterialUpload = async (req: AuthRequest, res: Response, next:
       size,
       status: 'uploading',
       uploadPath,
+      // A past question paper, with who set it and when, if the uploader knows
+      kind: req.body?.kind === 'past-question' ? 'past-question' : 'material',
+      lecturer: typeof req.body?.lecturer === 'string' ? req.body.lecturer.trim().replace(/\s+/g, ' ').slice(0, 120) : '',
+      year: typeof req.body?.year === 'string' ? req.body.year.trim().slice(0, 20) : '',
     } as unknown as ISpaceMaterial);
     await space.save();
 

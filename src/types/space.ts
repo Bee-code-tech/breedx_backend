@@ -34,12 +34,23 @@ export interface ISpaceMaterial {
   /** `uploading` until the browser finishes, then `ready`. `legacy`: added before uploads, name only. */
   status: 'uploading' | 'ready' | 'legacy';
   uploadPath: string | null;
+  /** A course material, or a past question paper for CBT-style practice. */
+  kind?: MaterialKind;
+  /** Who taught or set it, when the uploader knows. */
+  lecturer?: string;
+  /** Past questions: the session or year, e.g. "2023/2024". */
+  year?: string;
 }
+
+export const MATERIAL_KINDS = ['material', 'past-question'] as const;
+export type MaterialKind = (typeof MATERIAL_KINDS)[number];
 
 export interface ISpaceCourse {
   _id: Types.ObjectId;
   title: string;
   code: string;
+  /** Who teaches it, optional. */
+  lecturer?: string;
   materials: Types.DocumentArray<ISpaceMaterial & Document>;
 }
 

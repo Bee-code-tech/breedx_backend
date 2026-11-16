@@ -430,6 +430,9 @@ export const generateQuiz = async (req: AuthRequest, res: Response, next: NextFu
   const body = req.body ?? {};
   const fileIds = idList(body.fileIds);
   const libraryIds = idList(body.libraryIds);
+  // A space's course materials, e.g. past questions for CBT practice
+  const space =
+    isId(body.spaceId) ? { id: String(body.spaceId), materialIds: idList(body.spaceMaterialIds), courseIds: idList(body.courseIds) } : null;
   const count = Number(body.count ?? 10);
   const difficulty = body.difficulty ?? 'medium';
   const types: QuestionType[] = Array.isArray(body.types) && body.types.length ? [...new Set(body.types as QuestionType[])] : ['mcqs'];
@@ -452,7 +455,7 @@ export const generateQuiz = async (req: AuthRequest, res: Response, next: NextFu
   }
   const sourceFileIds = topicPicks ? [...new Set(topicPicks.map((pick) => pick.fileId))] : fileIds;
 
-  if (!sourceFileIds?.length && !libraryIds?.length) {
+  if (!sourceFileIds?.length && !libraryIds?.length && !space) {
     sendError(res, 'Choose at least one file or library', 400);
     return;
   }
@@ -490,7 +493,11 @@ export const generateQuiz = async (req: AuthRequest, res: Response, next: NextFu
     // Eight steps, each with the real numbers behind it (`data`), so the
     // generating screen can say what's happening in the student's language.
     stream.step('reading', 'Reading your materials…', { status: 'active' });
-    const sources = await readySources(stream, userId, { fileIds: sourceFileIds, libraryIds: topicPicks ? null : libraryIds });
+    const sources = await readySources(stream, userId, {
+      fileIds: sourceFileIds,
+      libraryIds: topicPicks ? null : libraryIds,
+      space: topicPicks ? null : space,
+    });
     if (stream.closed) return;
     if (!sources.length) {
       stream.fail("None of these files could be read. Try a PDF, Word, PowerPoint or text file.");

@@ -78,6 +78,7 @@ const toViewerSpace = async (space: ISpace, viewerId: string, viewerRole: SpaceR
     id: String(course._id),
     title: course.title,
     code: course.code,
+    lecturer: course.lecturer ?? '',
     materials: [...course.materials]
       // An upload still in progress only shows to the person uploading it
       .filter((material) => material.status !== 'uploading' || isViewer(material.uploadedBy))
@@ -92,6 +93,9 @@ const toViewerSpace = async (space: ISpace, viewerId: string, viewerRole: SpaceR
         // "ready" can be opened; "legacy" was added by name only, before uploads
         status: material.status ?? 'legacy',
         hasFile: Boolean(material.material),
+        kind: material.kind ?? 'material',
+        lecturer: material.lecturer ?? '',
+        year: material.year ?? '',
       })),
   }));
 
@@ -631,12 +635,16 @@ export const removeMember = async (req: AuthRequest, res: Response, next: NextFu
 
 // ── Courses and materials ─────────────────────────────────────────────────────
 
+const LECTURER_MAX = 120;
+
 const courseValues = (body: Record<string, unknown>) => {
   const title = text(body.title);
   const code = text(body.code).toUpperCase();
+  const lecturer = text(body.lecturer);
   if (!title || title.length > COURSE_TITLE_MAX) return { error: 'Give the course a title' };
   if (code.length > COURSE_CODE_MAX) return { error: 'That course code is too long' };
-  return { title, code };
+  if (lecturer.length > LECTURER_MAX) return { error: "That lecturer's name is too long" };
+  return { title, code, lecturer };
 };
 
 // POST /api/v1/spaces/:slug/courses
@@ -648,7 +656,7 @@ export const createCourse = async (req: AuthRequest, res: Response, next: NextFu
     if (!canManage(membership.role)) return sendError(res, 'Only the owner and admins can add courses', 403);
     const values = courseValues(req.body ?? {});
     if ('error' in values) return sendError(res, values.error!, 400);
-    space.courses.unshift({ title: values.title, code: values.code, materials: [] });
+    space.courses.unshift({ title: values.title, code: values.code, lecturer: values.lecturer, materials: [] });
     await space.save();
     await respondSpace(res, space, userId, membership.role, 'Course added', 201);
   } catch (error) {
@@ -669,6 +677,7 @@ export const updateCourse = async (req: AuthRequest, res: Response, next: NextFu
     if ('error' in values) return sendError(res, values.error!, 400);
     course.title = values.title;
     course.code = values.code;
+    course.lecturer = values.lecturer;
     await space.save();
     await respondSpace(res, space, userId, membership.role, 'Course updated');
   } catch (error) {
@@ -778,6 +787,9 @@ export const renameMaterial = async (req: AuthRequest, res: Response, next: Next
     const title = text(req.body?.title);
     if (!title || title.length > MATERIAL_TITLE_MAX) return sendError(res, 'Give the material a name', 400);
     material.title = title;
+    // Past questions can also fix their lecturer and year
+    if (typeof req.body?.lecturer === 'string') material.lecturer = text(req.body.lecturer).slice(0, LECTURER_MAX);
+    if (typeof req.body?.year === 'string') material.year = text(req.body.year).slice(0, 20);
     await space.save();
     await respondSpace(res, space, userId, membership.role, 'Material renamed');
   } catch (error) {
