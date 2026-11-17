@@ -20,6 +20,7 @@ const tutorSessionSchema = new Schema<ITutorSession>(
     sources: { type: Schema.Types.Mixed, default: [] },
     scope: { type: Schema.Types.Mixed, required: true },
     title: { type: String, default: '' },
+    focus: { type: String, default: '' },
     status: { type: String, enum: ['preparing', 'live', 'ended'], default: 'preparing' },
     stage: { type: String, enum: ['explain', 'check', 'reteach', 'wrap_up'], default: 'explain' },
     goalIndex: { type: Number, default: 0 },

@@ -77,8 +77,18 @@ export interface ITutorSession extends Document {
   guide: Types.ObjectId | null;
   sources: GuideSource[];
   /** Where it came from, to show and to link back. */
-  scope: { kind: 'file' | 'course'; fileId?: Types.ObjectId; spaceId?: Types.ObjectId; courseId?: Types.ObjectId; topicKey: string };
+  scope: {
+    kind: 'file' | 'course';
+    fileId?: Types.ObjectId;
+    spaceId?: Types.ObjectId;
+    courseId?: Types.ObjectId;
+    topicKey: string;
+    /** All the topics it covers, when chosen from a focus. */
+    topicKeys?: string[];
+  };
   title: string;
+  /** What the student asked to work on, in their words (optional). */
+  focus: string;
   status: 'preparing' | 'live' | 'ended';
   stage: TutorStage;
   goalIndex: number;

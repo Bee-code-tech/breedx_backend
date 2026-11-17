@@ -7,7 +7,10 @@ A live, one-on-one tutor that teaches one topic of a file (or of a space course)
 ## Flow
 
 1. `GET /topics?fileId=…` (library file) or `?spaceId=…&courseId=…` (space course) → `{ topics: [{ key, title, … }] }`
-2. `POST /sessions` with `{ fileId, topicKey }` or `{ spaceId, courseId, topicKey }`, optional `voice: "warm" | "calm"` → `201 { session, allowance }`, or `403 PLAN_LIMIT`
+2. `POST /sessions` with `{ fileId }` or `{ spaceId, courseId }`, plus `topicKey` and/or **`focus`** (free text up to 300 characters, e.g. "I keep mixing up the Krebs cycle steps"), and optional `voice` and `accent` → `201 { session, allowance }`, or `403 AI_ENERGY_EMPTY`.
+   - **With a `focus` and no `topicKey`,** the tutor picks the 1–3 topics that best match it, and `session.scope.topicKeys` lists them.
+   - **With both,** it teaches the chosen topic aimed at the focus.
+   - The teacher guide is written around the focus, and `session.title` becomes the guide's title once it's ready (until then, the focus text). Sessions return `focus`.
 3. `POST /sessions/:id/events` with `{ "type": "start" }` → a **stream** of the first beat. The first time a topic is taught, `step` events ("Preparing your tutor…") come first, for about 30–60 s.
 4. Play the beat. Then send **one** event:
    - `{ "type": "beat_done" }` when the beat finished playing and it didn't ask anything (`beat_end.waiting === "beat_done"`)
