@@ -10,9 +10,9 @@ import {
   ITutorSession,
   PendingAsk,
 } from '../../types/tutor';
-import { recordUsage } from '../ai/energy';
+import { energyFor, recordUsage } from '../ai/energy';
 import { Stream } from '../sse';
-import { startTutorClip } from '../speech';
+import { REACTIONS, startTutorClip, TutorVoice, tutorVoiceMode } from '../speech';
 import { materialText, prebuildNextGuide } from './guide';
 import { generateStructured, runBeat, ToolCall, ToolResult, TutorProvider } from './ai';
 import { ASK_LEVELS, DRAW_KINDS, ROLES, tutorTools } from './tools';
@@ -34,7 +34,15 @@ const ENGINE_RULES = `
 - \`board_state.space_left\` is from 0 to 1. Below 0.25, start your next concept with \`new_board\`. If you draw past the space, the app flips to a new board for you.
 - \`session_state.minutes_left\` counts down. When the stage is \`wrap_up\`, finish: one mixed question across today's goals, then a 2–3 sentence summary in their terms and a closing note, with no further \`ask\` after the summary.
 - The grader's verdict on an answer arrives one turn later as \`event.last_answer_grade\`. Judge the answer yourself meanwhile, and correct course if the grader disagrees. Moving on (\`request_advance\`) always waits for the grader.
-- **Stay inside the material.** Teach only what \`<course_material>\` and the teacher guide say. For a question beyond them, say in ONE plain sentence that it goes beyond today's material, give the simplest true answer only if you are sure, and steer back. Never invent figures, exam details, history or extra mechanisms.
+- **Stay inside the material.** Teach only what \`<course_material>\` and the teacher guide say. When a "why" question goes beyond them, answer from what the material DOES say if it covers part of it; otherwise say "Good question, your notes don't go into that, so we'll stick to what they cover" and steer back. Do not add outside facts, even true ones: no extra mechanisms, history, exam details, origins of constants or other machines.
+- **Vague answers are not answers.** "Yeah I get it", "okay", "I understand" or a restated question earn no praise: ask them to show it ("Explain it back to me in your own words"). Praise only what the student actually got right, and say exactly what.
+- **Never validate a wrong belief.** Never agree with, or say "you're right" about, anything in \`open_misconceptions\`, even partly.
+- **Teach before you ask.** While \`session_state.stage\` is \`explain\` or \`reteach\`, your beats TEACH and end without \`ask\`: the app plays them back to back. \`session_state.taught_beats\` counts the teaching beats for this goal; check questions are refused until it reaches \`session_state.teach_beats_needed\`. There are no warm-up or "what do you think?" questions: the student can raise a hand to ask anything.
+- **Build a rich board for each goal.** Start each goal on a fresh board (\`new_board\` titled with the goal). Over the teaching beats, build it up: a diagram (a flowchart, labelled parts or a graph), the key terms with labels, the formula if there is one, a worked example, and 2–4 key points. A student glancing at the finished board should be able to revise the whole goal from it.
+- **Follow \`session_state.pace\`.** \`fast\`: teach more briefly (one beat can be enough) and check with \`apply\` or \`spot_error\` questions. \`slow\`: smaller steps, the simplest style, more examples.
+- **Line length.** Each \`say\` is 2 to 4 sentences, under 70 words.
+- **Write for the voice.** Your \`say\` is performed by a very human voice that brings out how you write. Talk like a real, lively tutor: contractions, short punchy sentences mixed with longer ones, "…" for a thoughtful pause and "—" for an aside, rhetorical questions ("So why does that matter?"), natural openers ("Okay, so…", "Here's the cool part:"), the odd bit of light humour or a vivid everyday image. Vary how you start lines. Never sound like a textbook.
+- **Clean board text.** LaTeX belongs only in \`equation\` elements, and only for real formulas (Ns = 120f/P, O(n log n)). Every other element's \`text\` is plain words a student can read at a glance: no LaTeX, no \\text{}, no code. Use a \`flowchart\` for processes and steps, \`label\` and \`arrow\` for parts, \`key_point\` for short facts.
 - **Open misconceptions come first.** \`session_state.open_misconceptions\` lists wrong beliefs the student showed. Address the oldest one now: name it, break it with a concrete case or the worked example from the guide (never by repeating the same claim), then check it with a \`spot_error\` question. You cannot move on while one is open for the current goal.
 - **Never repeat a question.** \`session_state.recent_questions\` are your last questions: ask something different, from a new angle.
 - **Match the student.** If they already know it (quick, correct, confident answers), skip ahead: go straight to an \`apply\` or \`spot_error\` question; a pass there also counts as recall. If they're lost, slow down and use the simplest style. If they write in Nigerian Pidgin, reply warmly with a light touch of Pidgin while keeping technical terms in English. If they give one-word answers, ask them to say a bit more.
@@ -91,8 +99,10 @@ const usedSpace = (elements: BoardElement[]) =>
 // ── Limits ─────────────────────────────────────────────────────────────────────
 
 const MAX_SAY_CHARS = 400;
-// One idea per beat: about this many spoken words
-const SAY_WORDS = 45;
+// One idea per beat, explained properly: about this many spoken words at most
+const SAY_WORDS = 70;
+// Teaching beats needed on a goal before checking it (one when the student is fast, one after a reteach)
+const TEACH_BEATS = 3;
 const MAX_NOTE_CHARS = 120;
 const MAX_DRAW = 5;
 const BEAT_MAX_TOKENS = 4000;
@@ -109,6 +119,14 @@ const timer = () => {
   const start = Date.now();
   return (label: string) => debug && console.log(`[tutor] ${label}: ${Date.now() - start}ms`);
 };
+
+/**
+ * What a beat costs in AI energy. Context re-read from the cache (the notes,
+ * the conversation so far) is a tenth of the price, so a beat costs about the
+ * same as one Ask answer. TUTOR_ENERGY_SCALE adjusts it all.
+ */
+const beatEnergy = (usage: { input: number; output: number; cacheRead: number; cacheWrite: number }) =>
+  Math.ceil((usage.input + usage.cacheWrite + usage.cacheRead * 0.1 + usage.output * 4) * Number(process.env.TUTOR_ENERGY_SCALE || 0.3));
 
 // One beat at a time per session; an interrupt cancels the running one
 const running = new Map<string, AbortController>();
@@ -175,7 +193,7 @@ export type StudentEvent = (
   | { type: 'answer'; text: string; choice?: number }
   | { type: 'speak'; text: string }
   /** `clip`: which sentence of the last line was playing when the student cut in (0 = the first). */
-  | { type: 'interrupt'; text: string; clip?: number }
+  | { type: 'interrupt'; text: string; clip?: number; beat?: number }
 ) & { boardFill?: number };
 
 // ── Recording ──────────────────────────────────────────────────────────────────
@@ -254,6 +272,9 @@ const listen = async (
   }
 };
 
+// Answers that only sound like agreement
+const VAGUE = /\b(i (get|got|understand) it|i see|makes sense|okay|ok|yeah|sure|got it|understood)\b/i;
+
 const SENSITIVE = /\b(health|ill|sick|disease|money|broke|debt|religio|church|mosque|pray|politic|party|vote)\w*/i;
 
 /** Learning signals go into the student's profile, so later sessions use their words. */
@@ -292,6 +313,22 @@ const progressOf = (session: ITutorSession, goalId: string) =>
 const readyToAdvance = (passed: CheckLevel[]) =>
   passed.includes('recall') && passed.includes('explain_back') && (passed.includes('apply') || passed.includes('spot_error'));
 
+/**
+ * How quickly this student is getting it, from this session's check results:
+ * two passes in a row is fast, two misses in a row is slow.
+ */
+const paceOf = (session: ITutorSession): 'fast' | 'normal' | 'slow' => {
+  const recent = session.grades.slice(-3);
+  const last2 = recent.slice(-2);
+  if (last2.length === 2 && last2.every((grade) => grade === 'pass')) return 'fast';
+  if (last2.length === 2 && last2.every((grade) => grade === 'fail' || grade === 'not_an_answer')) return 'slow';
+  return 'normal';
+};
+
+/** Teaching beats a goal needs before checking it. */
+const teachBeatsNeeded = (session: ITutorSession) =>
+  session.stage === 'reteach' || paceOf(session) === 'fast' ? 1 : TEACH_BEATS;
+
 // Moving on is blocked by an open misconception this many tries at most, so a session can't stall
 const MISCONCEPTION_TRIES = 3;
 
@@ -329,6 +366,8 @@ const trackMisconceptions = (session: ITutorSession, signals: Signal[], grade: G
 
 const applyGrade = (session: ITutorSession, guide: ITeacherGuide, grade: Grade, ask: PendingAsk) => {
   if (!(CHECK_LEVELS as readonly string[]).includes(ask.level)) return;
+  session.grades = [...session.grades, grade].slice(-10);
+  session.markModified('grades');
   const level = ask.level as CheckLevel;
   const progress = progressOf(session, ask.goal_id || goalOf(session, guide).id);
   if (grade === 'pass') {
@@ -340,7 +379,10 @@ const applyGrade = (session: ITutorSession, guide: ITeacherGuide, grade: Grade, 
   } else {
     progress.fails[level] = (progress.fails[level] ?? 0) + 1;
     // Two misses at the same level: teach it again, differently
-    if ((progress.fails[level] ?? 0) >= 2) session.stage = 'reteach';
+    if ((progress.fails[level] ?? 0) >= 2) {
+      session.stage = 'reteach';
+      session.taughtBeats = 0;
+    }
   }
   session.markModified('progress');
 };
@@ -372,6 +414,9 @@ const turnMessage = async (
         .filter((item) => !item.resolved)
         .map(({ concept, belief, quote, tries }) => ({ concept, belief, quote, tries })),
       recent_questions: session.asked.slice(-4),
+      pace: paceOf(session),
+      taught_beats: session.taughtBeats,
+      teach_beats_needed: teachBeatsNeeded(session),
       minutes_used: Math.round(minutesUsed(session) * 10) / 10,
       minutes_left: Math.max(0, Math.round((session.minutes - minutesUsed(session)) * 10) / 10),
     },
@@ -398,13 +443,25 @@ type Op = Record<string, unknown> & { op: string };
  * A line as voice clips, one per sentence, made in parallel so speech is ready
  * sooner. A clip with no audio is spoken with the device's voice.
  */
-const voiceOf = async (text: string, voice: 'warm' | 'calm') => {
+/** The session's voice: older sessions said warm/calm for female/male. */
+const tutorVoiceOf = (session: ITutorSession): TutorVoice => ({
+  voice: session.voice === 'female' || session.voice === 'warm' ? 'female' : 'male',
+  accent: session.accent ?? '',
+});
+
+const voiceOf = async (text: string, voice: TutorVoice) => {
   const sentences = text.match(/[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g)?.map((part) => part.trim()).filter(Boolean) ?? [text];
-  // Very short sentences join the next one, so the voice doesn't stutter
   const pieces: string[] = [];
-  for (const sentence of sentences) {
-    if (pieces.length && pieces[pieces.length - 1].length < 40) pieces[pieces.length - 1] += ` ${sentence}`;
-    else pieces.push(sentence);
+  if (tutorVoiceMode() === 'gemini') {
+    // One clip per line: the Gemini voice performs a whole thought best, streaming starts it
+    // within about a second, and it keeps voice requests within the per-minute quota
+    pieces.push(sentences.join(' '));
+  } else {
+    // Very short sentences join the next one, so the voice doesn't stutter
+    for (const sentence of sentences) {
+      if (pieces.length && pieces[pieces.length - 1].length < 40) pieces[pieces.length - 1] += ` ${sentence}`;
+      else pieces.push(sentence);
+    }
   }
   // Ids come back at once; the audio is made meanwhile and the app's request waits for it
   const clips = await Promise.all(pieces.map((piece) => startTutorClip(piece, voice)));
@@ -450,7 +507,7 @@ const applyTool = async (
   session: ITutorSession,
   guide: ITeacherGuide,
   block: ToolCall,
-  beat: { asked: boolean; grading: Promise<void> }
+  beat: { id: number; asked: boolean; grading: Promise<void> }
 ): Promise<{ ops: Op[]; result: string; error?: boolean }> => {
   const input = block.input ?? {};
   const ids = new Set(session.board.elements.map((element) => element.id));
@@ -461,13 +518,18 @@ const applyTool = async (
     case 'say': {
       const text = str(input.text, MAX_SAY_CHARS);
       if (!text) return { ops: [], result: 'Not applied: empty text.', error: true };
-      const clips = await voiceOf(text, session.voice);
+      const clips = await voiceOf(text, tutorVoiceOf(session));
       session.lastSay = clips.map((clip) => ({ text: clip.text }));
       session.markModified('lastSay');
+      // Kept by beat id: the app may already be playing the next beat when an interrupt names this one
+      const said = session.recentSays.find((entry) => entry.beat === beat.id);
+      if (said) said.clips.push(...clips.map((clip) => clip.text));
+      else session.recentSays = [...session.recentSays, { beat: beat.id, clips: clips.map((clip) => clip.text) }].slice(-4);
+      session.markModified('recentSays');
       // Too long for one beat: still said, but the tutor is told so the next ones are shorter
       const words = text.split(/\s+/).length;
       return {
-        ops: [{ op: 'say', text, audio: clips[0]?.audio ?? null, clips }],
+        ops: [{ op: 'say', beat: beat.id, text, audio: clips[0]?.audio ?? null, clips }],
         result: words > SAY_WORDS ? `Said, but it was ${words} words. Keep each say under ${SAY_WORDS} words: one idea per beat.` : 'Said.',
       };
     }
@@ -561,6 +623,17 @@ const applyTool = async (
     }
     case 'ask': {
       const level = (ASK_LEVELS as readonly string[]).includes(String(input.level)) ? (String(input.level) as PendingAsk['level']) : 'probe';
+      // Teach first: no quizzing on a goal that hasn't been taught yet, and no warm-up questions
+      if (level === 'probe') {
+        return { ops: [], result: 'Not asked: no warm-up questions. Teach the goal; the student can raise a hand to ask anything.', error: true };
+      }
+      if ((session.stage === 'explain' || session.stage === 'reteach') && level !== 'wrap_up' && session.taughtBeats < teachBeatsNeeded(session)) {
+        return {
+          ops: [],
+          result: `Not asked: teach first. This goal has had ${session.taughtBeats} teaching beat(s); it needs ${teachBeatsNeeded(session)} before checking.`,
+          error: true,
+        };
+      }
       const question = str(input.question, 500);
       if (!question) return { ops: [], result: 'Not applied: empty question.', error: true };
       const options = idList(input.options).slice(0, 4);
@@ -597,6 +670,7 @@ const applyTool = async (
         return { ops: [], result: `Refused: still needs a pass at ${missing.join(', ')}.`, error: true };
       }
       session.goalIndex += 1;
+      session.taughtBeats = 0;
       const done = session.goalIndex >= guide.goals.length;
       session.stage = done ? 'wrap_up' : 'explain';
       if (done) session.goalIndex = guide.goals.length - 1;
@@ -739,14 +813,29 @@ const beatFor = async (
         ? session.pending.options[event.choice] ?? ''
         : '');
       turnEvent.text = text;
-      // Where the tutor was cut off: what the student heard, and what they didn't
-      if (event.type === 'interrupt' && session.lastSay?.length) {
-        const sentences = session.lastSay.map((clip) => clip.text);
+      // A short reaction in the tutor's voice right away, while the real reply is written
+      if (!prefetch && tutorVoiceMode() === 'gemini') {
+        const options = REACTIONS[event.type];
+        const phrase = options[Math.floor(Math.random() * options.length)];
+        void startTutorClip(phrase, tutorVoiceOf(session)).then((clip) => {
+          if (clip) stream.send('op', { op: 'react', text: phrase, audio: clip.id });
+        });
+      }
+      // Where the tutor was cut off: what the student heard, and what they didn't. The app may
+      // already have the next beat queued, so the interrupt names the beat that was playing
+      if (event.type === 'interrupt' && session.recentSays.length) {
+        const index = Math.max(
+          0,
+          typeof event.beat === 'number' ? session.recentSays.findIndex((entry) => entry.beat === event.beat) : session.recentSays.length - 1
+        );
+        const playing = session.recentSays[index === -1 ? session.recentSays.length - 1 : index];
+        const later = session.recentSays.slice(session.recentSays.indexOf(playing) + 1).flatMap((entry) => entry.clips);
+        const sentences = playing.clips;
         const at = Math.min(Math.max(0, Math.floor(event.clip ?? sentences.length - 1)), sentences.length - 1);
         turnEvent.interrupted = {
           heard: sentences.slice(0, at).join(' '),
           cut_off_during: sentences[at],
-          not_yet_said: sentences.slice(at + 1).join(' '),
+          not_yet_said: [...sentences.slice(at + 1), ...later].join(' '),
         };
       }
       await log('student', { kind: event.type, text, ...(event.type === 'interrupt' ? { clip: event.clip ?? null } : {}) });
@@ -758,7 +847,8 @@ const beatFor = async (
       // Graded alongside the tutor's reply, not before it, so the reply comes sooner
       const listenTime = timer();
       const goal = goalOf(session, guide);
-      grading = listen(session.provider, String(session.user), goal, ask, text).then(async (verdict) => {
+      const gradingNow = listen(session.provider, String(session.user), goal, ask, text);
+      grading = gradingNow.then(async (verdict) => {
         listenTime('listener');
         if (ask) {
           applyGrade(session, guide, verdict.grade, ask);
@@ -770,6 +860,15 @@ const beatFor = async (
         trackMisconceptions(session, verdict.signals, ask ? verdict.grade : null, ask?.level ?? null);
         void remember(String(session.user), verdict.signals);
       }).catch((error) => console.error('Grading failed:', error));
+      // A short or vague answer: wait for the verdict, so the tutor doesn't praise a non-answer
+      if (ask && (text.split(/\s+/).length <= 12 || VAGUE.test(text))) {
+        await grading;
+        if (session.lastGrade) {
+          turnEvent.grade = session.lastGrade.grade;
+          turnEvent.grade_reason = session.lastGrade.reason;
+          session.lastGrade = null;
+        }
+      }
     }
     // The verdict on the answer before this one, for the tutor to correct course
     if (session.lastGrade) {
@@ -777,11 +876,15 @@ const beatFor = async (
       session.lastGrade = null;
     }
 
-    // Out of time or budget: wrap up, then end
+    // Out of time, budget or AI energy: wrap up, then end
     const used = minutesUsed(session);
-    if (session.stage !== 'wrap_up' && (used >= session.minutes - WRAP_UP_MINUTES || session.tokens.output > OUTPUT_TOKEN_CAP || session.tokens.input > INPUT_TOKEN_CAP)) {
+    const outOfEnergy = (await energyFor(String(session.user))).empty;
+    if (
+      session.stage !== 'wrap_up' &&
+      (outOfEnergy || used >= session.minutes - WRAP_UP_MINUTES || session.tokens.output > OUTPUT_TOKEN_CAP || session.tokens.input > INPUT_TOKEN_CAP)
+    ) {
       session.stage = 'wrap_up';
-      await log('stage', { stage: 'wrap_up', reason: 'time' });
+      await log('stage', { stage: 'wrap_up', reason: outOfEnergy ? 'energy' : 'time' });
     }
     if (used >= session.minutes + GRACE_MINUTES) {
       if (prefetch) return null;
@@ -789,7 +892,8 @@ const beatFor = async (
       return null;
     }
 
-    const beat = { asked: false, grading };
+    session.beatSeq += 1;
+    const beat = { id: session.beatSeq, asked: false, grading };
     const ops: Op[] = [];
     const results: ToolResult[] = [];
     let pending = Promise.resolve();
@@ -802,7 +906,8 @@ const beatFor = async (
     let result;
     try {
       result = await runBeat(session.provider, {
-        job: session.stage === 'reteach' ? 'reteach' : 'beat',
+        // Teaching beats (prepared while the last one plays) think more; replies to the student, which they wait for, think less
+        job: session.stage === 'reteach' ? 'reteach' : turnEvent.type === 'start' || turnEvent.type === 'beat_done' ? 'beat' : 'reply',
         system:
           tutorSystem().replace('{{teacher_guide_json}}', JSON.stringify({ title: guide.title, summary: guide.summary, goals: guide.goals })) +
           `\n\n<course_material>\n${await courseMaterial(guide)}\n</course_material>`,
@@ -837,12 +942,16 @@ const beatFor = async (
     await pending;
     await grading;
     beatTime('all applied');
+    // A beat that taught (spoke without asking) counts toward the goal's teaching
+    if (!beat.asked && ops.some((op) => op.op === 'say') && (session.stage === 'explain' || session.stage === 'reteach')) {
+      session.taughtBeats += 1;
+    }
 
     // Asked without saying anything: the question itself is spoken, and the tutor is told
     if (!ops.some((op) => op.op === 'say') && beat.asked && session.pending) {
-      const clips = await voiceOf(session.pending.question, session.voice);
+      const clips = await voiceOf(session.pending.question, tutorVoiceOf(session));
       const askAt = ops.findIndex((op) => op.op === 'ask');
-      const sayOp = { op: 'say', text: session.pending.question, audio: clips[0]?.audio ?? null, clips };
+      const sayOp = { op: 'say', beat: beat.id, text: session.pending.question, audio: clips[0]?.audio ?? null, clips };
       stream.send('op', sayOp);
       ops.splice(askAt, 0, sayOp);
       const askResult = results.find((item) => item.name === 'ask');
@@ -851,7 +960,7 @@ const beatFor = async (
     // Plain text instead of tools (shouldn't happen): speak it
     if (!result.calls.length && result.text) {
       const spoken = result.text.slice(0, MAX_SAY_CHARS);
-      const clips = await voiceOf(spoken, session.voice);
+      const clips = await voiceOf(spoken, tutorVoiceOf(session));
       send({ op: 'say', text: spoken, audio: clips[0]?.audio ?? null, clips });
     }
     if (result.refused) send({ op: 'say', text: "Let's keep going with the topic.", audio: null });
@@ -869,11 +978,13 @@ const beatFor = async (
       cacheWrite: session.tokens.cacheWrite + usage.cacheWrite,
     };
     session.markModified('tokens');
+    // The beat is paid for with the student's AI energy
     void recordUsage({
       userId: String(session.user),
       feature: 'study',
       engine: result.model,
       tokens: { inputTokens: usage.input + usage.cacheRead + usage.cacheWrite, outputTokens: usage.output },
+      energy: beatEnergy(usage),
       session: session._id,
     });
     await log('beat', { ops, stage: session.stage, page: session.board.page });
@@ -888,6 +999,7 @@ const beatFor = async (
     }
     if (!prefetch) await session.save();
     stream.send('beat_end', {
+      beat: beat.id,
       waiting: beat.asked ? 'answer' : 'beat_done',
       stage: session.stage,
       goal: { index: session.goalIndex, total: guide.goals.length, title: goalOf(session, guide).title },

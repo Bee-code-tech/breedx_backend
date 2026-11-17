@@ -4,7 +4,7 @@ import env from '../config/env';
 import { PLAN_LIMITS } from '../config/plans';
 import { SpeechDay, SpeechMonth } from '../models/speechUsage.model';
 import { planFor } from './plan';
-import { getObject, saveObject } from './storage';
+import { downloadObject, getObject, saveObject } from './storage';
 
 // Signs in like the bucket: your gcloud login locally, the VM's service account in production
 const client = new TextToSpeechClient({ projectId: env.GCP_PROJECT });
@@ -190,7 +190,269 @@ export const tutorClip = async (rawText: string, voice: VoiceId): Promise<{ id: 
  * and `GET /tutor/audio/:id` waits for it. Null when this month's free voice
  * is used up.
  */
-export const startTutorClip = async (rawText: string, voice: VoiceId): Promise<{ id: string; tier: Tier } | null> => {
+// ── Gemini voice (NotebookLM-style): performed, not read ──────────────────────
+
+/** Which voice the tutor speaks with: "gemini" (default), or Google's "hd" / "fast" voices. */
+export const tutorVoiceMode = () => (process.env.TUTOR_VOICE === 'hd' || process.env.TUTOR_VOICE === 'fast' ? process.env.TUTOR_VOICE : 'gemini');
+
+/**
+ * Gemini voice models to spread lines over. Each has its own per-minute quota
+ * (5 a minute on a new project), so Flash then Pro (same voices, Pro even richer) double what we can
+ * say. Set TUTOR_TTS_MODELS (comma separated) once quotas are raised.
+ */
+const ttsModels = () =>
+  (process.env.TUTOR_TTS_MODELS || process.env.TUTOR_TTS_MODEL || 'gemini-2.5-flash-tts,gemini-2.5-pro-tts')
+    .split(',')
+    .map((model) => model.trim())
+    .filter(Boolean);
+
+/** The tutor's voice: male (Charon) or female (Kore), speaking English with the student's own accent. */
+export const TUTOR_VOICES = ['male', 'female'] as const;
+export type TutorVoiceId = (typeof TUTOR_VOICES)[number];
+export interface TutorVoice {
+  voice: TutorVoiceId;
+  /** ISO country code whose English accent to use, e.g. "NG". Empty for a neutral accent. */
+  accent: string;
+}
+
+const geminiVoiceFor = (voice: TutorVoiceId) =>
+  voice === 'female' ? process.env.TUTOR_GEMINI_VOICE_FEMALE || 'Kore' : process.env.TUTOR_GEMINI_VOICE_MALE || 'Charon';
+
+const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+/** "NG" → "Nigeria", or null for anything that isn't a country code. */
+export const countryName = (code: string) => {
+  if (!/^[A-Z]{2}$/.test(code)) return null;
+  try {
+    const name = regionNames.of(code);
+    return name && name !== code ? name : null;
+  } catch {
+    return null;
+  }
+};
+const accentLine = (code: string) => {
+  const name = countryName(code);
+  return name ? ` Speak with a natural English accent from ${name}, the way an educated tutor there would.` : '';
+};
+
+// How the tutor should sound. Changing it changes every clip, so bump the version too
+const GEMINI_STYLE_VERSION = 'v2';
+const GEMINI_STYLE =
+  process.env.TUTOR_VOICE_STYLE ||
+  'You are a warm, playful university tutor talking one-on-one with a student you like. Speak naturally, like a real person ' +
+    'thinking out loud: relaxed pace, natural pauses at "…" and "—", a smile in your voice, light emphasis on key ideas, ' +
+    'genuine curiosity in questions. Never sound like you are reading.';
+
+/** Like `speakable`, but keeps "…" and "—": the Gemini voice performs them as pauses. */
+const performable = (text: string) =>
+  text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\[(\d{1,2})\]/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/\$([^$]+)\$/g, '$1')
+    .replace(/O\(([^)]+)\)/g, 'O of $1')
+    .replace(/\^2\b/g, ' squared')
+    .replace(/(\*\*|__|\*|`|#+\s|>\s)/g, '')
+    .replace(/\.{3,}/g, '…')
+    .replace(/\s*\n\s*/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+/** Short reactions in the tutor's voice, played the moment the student finishes speaking. */
+export const REACTIONS = {
+  answer: ['Mm, okay…', 'Alright, let\'s see…', 'Hmm, interesting…', 'Okay, okay…'],
+  interrupt: ['Oh — good question!', 'Ooh, okay, hold that thought…', 'Ah, yes — let\'s look at that.'],
+  speak: ['Mm-hmm…', 'Okay…'],
+} as const;
+
+// ── Gemini voice rate limit ────────────────────────────────────────────────────
+// Google allows only so many Gemini voice requests a minute per project
+// (quota: global_generate_content_requests_per_minute_per_project_per_base_model).
+// Live speech goes first; background work (reactions) only uses half.
+const ttsRpm = () => Math.max(1, Number(process.env.TUTOR_TTS_RPM || 5));
+const ttsUsed = new Map<string, number[]>();
+const ttsPausedUntil = new Map<string, number>();
+
+/** A model with a free request this minute, or null. Background work only uses half of each. */
+const takeTtsSlot = (background: boolean) => {
+  const now = Date.now();
+  for (const model of ttsModels()) {
+    const used = ttsUsed.get(model) ?? [];
+    while (used.length && now - used[0] > 60_000) used.shift();
+    ttsUsed.set(model, used);
+    if (now < (ttsPausedUntil.get(model) ?? 0)) continue;
+    if (used.length >= (background ? Math.floor(ttsRpm() / 2) : ttsRpm())) continue;
+    used.push(now);
+    return model;
+  }
+  return null;
+};
+
+/** A model for a live line: waits briefly for one rather than switching voices mid-session. */
+const waitForTtsSlot = async (background: boolean) => {
+  if (background) return takeTtsSlot(true);
+  for (let waited = 0; waited <= 4000; waited += 250) {
+    const model = takeTtsSlot(false);
+    if (model) return model;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return null;
+};
+
+const startGeminiClip = async (rawText: string, tutorVoice: TutorVoice, background = false) => {
+  const text = performable(rawText).slice(0, SPEECH_MAX_CHARS);
+  if (!text) return null;
+  const voiceName = geminiVoiceFor(tutorVoice.voice);
+  const prompt = GEMINI_STYLE + accentLine(tutorVoice.accent);
+  // Not tied to one model: any of the pool makes the same voice, so a saved clip is reused whichever made it
+  const path = clipPath(`gemini-tts:${voiceName}:${tutorVoice.accent}:${GEMINI_STYLE_VERSION}`, text);
+  const fallbackVoice: VoiceId = tutorVoice.voice === 'female' ? 'warm' : 'calm';
+  const id = clipIdOf(path);
+  if (recentClips.has(id) || pendingClips.has(id)) return { id, tier: 'hd' as Tier };
+  const making = (async () => {
+    // Made before (reactions, repeated lines): reuse it
+    if (await getObject(path)) {
+      const data = await downloadObject(path);
+      remember(id, data);
+      return data;
+    }
+    // Streamed: the app can start playing about a second in, while the rest is still being made
+    const live: LiveClip = { chunks: [], done: false, failed: false, listeners: new Set() };
+    liveClips.set(id, live);
+    try {
+      const model = await waitForTtsSlot(background);
+      if (!model) {
+        if (background) {
+          live.failed = true;
+          live.done = true;
+          return null;
+        }
+        throw new Error('Gemini voice is at its limit this minute');
+      }
+      const pcm = await streamGemini(text, prompt, voiceName, model, live);
+      const data = wavOf(pcm);
+      remember(id, data);
+      void saveObject(path, data, 'audio/wav').catch((error) => console.error('Saving a tutor clip failed:', error));
+      return data;
+    } catch (error) {
+      live.failed = true;
+      live.done = true;
+      live.listeners.forEach((listener) => listener(null));
+      // Out of quota: stop asking Google for a moment instead of failing every line
+      const exhausted = /base model: ([\w.-]+)/.exec((error as Error).message)?.[1];
+      if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test((error as Error).message) && exhausted) {
+        ttsPausedUntil.set(exhausted, Date.now() + 20_000);
+      }
+      if (background) return null;
+      // The Gemini voice failed: Google's HD voice says it rather than silence
+      console.error('Gemini voice failed, using the HD voice for this line:', (error as Error).message);
+      try {
+        const [response] = await client.synthesizeSpeech({
+          input: { text: speakable(rawText).slice(0, SPEECH_MAX_CHARS) },
+          voice: { languageCode: 'en-GB', name: VOICE_NAMES[fallbackVoice].hd },
+          audioConfig: { audioEncoding: 'MP3' },
+        });
+        const data = Buffer.from(response.audioContent as Uint8Array);
+        remember(id, data);
+        return data;
+      } catch {
+        return null;
+      }
+    }
+  })().finally(() =>
+    setTimeout(() => {
+      pendingClips.delete(id);
+      liveClips.delete(id);
+    }, 60_000)
+  );
+  pendingClips.set(id, making);
+  return { id, tier: 'hd' as Tier };
+};
+
+// ── Streaming ──────────────────────────────────────────────────────────────────
+
+/** Raw audio from streamed clips: 16-bit signed little-endian, mono, 24 kHz. */
+export const PCM_RATE = 24_000;
+
+/** A clip still being streamed from Google: its audio so far, and who's waiting for more. */
+export interface LiveClip {
+  chunks: Buffer[];
+  done: boolean;
+  failed: boolean;
+  listeners: Set<(chunk: Buffer | null) => void>;
+}
+const liveClips = new Map<string, LiveClip>();
+
+/** A clip being streamed right now (or just finished), to pass its audio on as it comes. */
+export const liveClip = (id: string) => liveClips.get(id) ?? null;
+
+const streamGemini = (text: string, prompt: string, voiceName: string, model: string, live: LiveClip) =>
+  new Promise<Buffer>((resolve, reject) => {
+    const stream = client.streamingSynthesize();
+    stream.on('data', (response: { audioContent?: Uint8Array }) => {
+      const chunk = Buffer.from(response.audioContent ?? []);
+      if (!chunk.length) return;
+      live.chunks.push(chunk);
+      live.listeners.forEach((listener) => listener(chunk));
+    });
+    stream.on('error', reject);
+    stream.on('end', () => {
+      if (!live.chunks.length) return reject(new Error('No audio came back'));
+      live.done = true;
+      live.listeners.forEach((listener) => listener(null));
+      resolve(Buffer.concat(live.chunks));
+    });
+    stream.write({
+      streamingConfig: {
+        voice: { languageCode: 'en-US', name: voiceName, modelName: model },
+        streamingAudioConfig: { audioEncoding: 'PCM', sampleRateHertz: PCM_RATE },
+      },
+    });
+    stream.write({ input: { text, prompt } });
+    stream.end();
+  });
+
+/** Raw audio as a WAV file, for replays and apps that play whole files. */
+const wavOf = (pcm: Buffer) => {
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(1, 22); // mono
+  header.writeUInt32LE(PCM_RATE, 24);
+  header.writeUInt32LE(PCM_RATE * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+};
+
+/** True for a WAV file (Gemini clips); MP3 otherwise. */
+export const isWav = (data: Buffer) => data.subarray(0, 4).toString() === 'RIFF';
+
+/**
+ * Makes one student's reactions ahead (their voice and accent), in the
+ * background and within the rate limit, so they play instantly. Saved for
+ * good, so each accent is made once ever.
+ */
+export const warmUpReactions = async (tutorVoice: TutorVoice) => {
+  if (tutorVoiceMode() !== 'gemini') return;
+  for (const phrase of Object.values(REACTIONS).flat()) {
+    const clip = await startGeminiClip(phrase, tutorVoice, true).catch(() => null);
+    if (!clip) return;
+    if (!(await pendingClip(clip.id))) return; // out of slots: try again with the next session
+  }
+};
+
+/** A sample line for previewing a voice before a session. */
+export const VOICE_PREVIEW = "Hi! I'm your BreedX tutor. Let's take this one step at a time… and make it actually click.";
+
+export const startTutorClip = async (rawText: string, tutorVoice: TutorVoice): Promise<{ id: string; tier: Tier } | null> => {
+  if (tutorVoiceMode() === 'gemini') return startGeminiClip(rawText, tutorVoice);
+  const voice: VoiceId = tutorVoice.voice === 'female' ? 'warm' : 'calm';
   const text = speakable(rawText).slice(0, SPEECH_MAX_CHARS);
   if (!text) return null;
   const names = VOICE_NAMES[voice];

@@ -10,6 +10,8 @@ import {
   getSession,
   listSessions,
   listTopics,
+  listVoices,
+  previewVoice,
   sendEvent,
 } from '../controllers/tutor.controller';
 import { protect } from '../middleware/auth';
@@ -20,6 +22,8 @@ const router = Router();
 router.use(protect);
 
 router.get('/allowance', getAllowance);
+router.get('/voices', listVoices);
+router.post('/voices/preview', aiLimiter, previewVoice);
 router.get('/topics', listTopics);
 router.get('/profile', getProfile);
 router.delete('/profile', deleteProfile);

@@ -87,10 +87,18 @@ export interface ITutorSession extends Document {
   pending: PendingAsk | null;
   /** Wrong beliefs the student showed this session, until a breakthrough clears them. */
   misconceptions: { concept: string; belief: string; quote: string; tries: number; resolved: boolean }[];
+  /** Teaching beats on the current goal since it started (or since a reteach). */
+  taughtBeats: number;
+  /** Recent check results, for the student's pace. */
+  grades: Grade[];
   /** The last few questions asked, so the tutor never asks the same thing twice. */
   asked: string[];
   /** The tutor's last spoken line as sent, sentence by sentence, to know what an interrupt cut off. */
   lastSay: { text: string }[] | null;
+  /** The last few beats' spoken sentences by beat id, so an interrupt can name which beat it cut off. */
+  recentSays: { beat: number; clips: string[] }[];
+  /** Id of the last beat; each beat gets the next one. */
+  beatSeq: number;
   /** The grader's verdict on the last answer, given to the tutor on its next turn. */
   lastGrade: { level: string; grade: Grade; reason: string } | null;
   /**
@@ -107,7 +115,10 @@ export interface ITutorSession extends Document {
   toolResults: { id: string; name: string; result: string; isError?: boolean }[];
   /** The AI it runs on, fixed when it's created, so switching TUTOR_PROVIDER never breaks a session. */
   provider: 'gemini' | 'claude';
-  voice: 'warm' | 'calm';
+  /** male (Charon) or female (Kore); warm/calm on older sessions. */
+  voice: 'male' | 'female' | 'warm' | 'calm';
+  /** Country code whose English accent the tutor speaks with, e.g. "NG". */
+  accent: string;
   minutes: number;
   startedAt: Date | null;
   endedAt: Date | null;

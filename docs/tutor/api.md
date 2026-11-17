@@ -13,10 +13,12 @@ A live, one-on-one tutor that teaches one topic of a file (or of a space course)
    - `{ "type": "beat_done" }` when the beat finished playing and it didn't ask anything (`beat_end.waiting === "beat_done"`)
    - `{ "type": "answer", "text": "…" }` (or `"choice": 1` for multiple choice) when it asked (`waiting === "answer"`)
    - `{ "type": "speak", "text": "…" }` when the student says something on their own
-   - `{ "type": "interrupt", "text": "…", "clip": 1 }` to cut the tutor off: stop the audio and send which sentence was playing (`clip`, the index in the last `say` op's `clips`, 0 = first). A beat still being written is cancelled. The tutor answers, then picks up from the cut-off sentence without repeating what was heard
+   - `{ "type": "interrupt", "text": "…", "beat": 7, "clip": 1 }` to cut the tutor off: stop the audio and send which sentence was playing (`clip`, the index in the last `say` op's `clips`, 0 = first). A beat still being written is cancelled. The tutor answers, then picks up from the cut-off sentence without repeating what was heard
 5. Repeat until an `ended` event. `POST /sessions/:id/end` ends it early.
 
 Every event can also carry **`boardFill`** (0 to 1): how full the board really is on screen, measured by the layout engine. The server then uses it instead of its own estimate, so the tutor's `space_left` matches what the student sees. Send it with every event.
+
+**No gaps between explanation beats:** when `beat_end.waiting` is `beat_done`, send `beat_done` as soon as that beat's stream ends, without waiting for its audio, and queue the returned ops to play after the current clips. The next beat is usually already prepared on the server, so it arrives while the current one is still playing. Every `say` op and `beat_end` carries the beat's id (`beat`). When the student interrupts, send `beat` (the beat whose audio was playing) with `clip`, so the tutor knows they never heard the queued beat.
 
 Send one event at a time. Anything but `interrupt` while a beat is running gets `error { code: "BUSY" }`.
 
@@ -35,7 +37,7 @@ Send one event at a time. Anything but `interrupt` while a beat is running gets 
 
 | `op` | Fields | What the app does |
 |---|---|---|
-| `say` | `text`, `audio`, `clips: [{ text, audio }]` | Play each clip in order with `GET /audio/:audio` (MP3), one per sentence. A clip with `audio: null` (the month's free voice is used up) is spoken with the device voice. Show `text` as subtitles straight away |
+| `say` | `beat`, `text`, `audio`, `clips: [{ text, audio }]` | Play each clip in order with `GET /audio/:audio` (MP3), one per sentence. A clip with `audio: null` (the month's free voice is used up) is spoken with the device voice. Show `text` as subtitles straight away |
 | `draw` | `elements[]`: `{ id, kind, role, text?, target?, from?, to?, latex?, smiles?, mermaid?, graph?, circuit?, chart?, asset_id?, zone?, on_word? }` | Draw them, starting each when the voice reaches `on_word` |
 | `highlight` | `ids`, `on_word?` | Pulse those elements |
 | `fade` | `ids` | Fade to 30% |
@@ -50,11 +52,25 @@ Send one event at a time. Anything but `interrupt` while a beat is running gets 
 
 **Roles → colours:** `structure` chalk, `term` sky, `flow` amber, `student` lime, `caution` coral.
 
+## The tutor's voice
+
+The voice is Gemini's own speech (NotebookLM-style): male (Charon, the default) or female (Kore), speaking English **with the student's own country's accent** by default (their profile country: Nigerian for NG, Ghanaian for GH, and so on).
+
+| Route | What it does |
+|---|---|
+| `GET /voices` | `{ default: { voice, accent }, voices: [{ id, label }], accents: [{ code, label }] }`. The student's country comes first; `NEUTRAL` is a neutral accent |
+| `POST /voices/preview` with `{ voice?, accent? }` | `{ audio, text, voice, accent }`. Play `audio` like any clip, so they can hear it before choosing |
+| `POST /sessions` with `voice: "male"\|"female"`, `accent: "GH"\|"NEUTRAL"` | Both optional: leave them out for the defaults. Sessions return `voice` and `accent` |
+
+Clips: `GET /audio/:id` returns the whole file (WAV for this voice), waiting while it's made. **`GET /audio/:id?stream=pcm`** passes raw audio on as it's generated (16-bit signed little-endian, mono, 24 kHz), so playback can start about a second in. Play it with the Web Audio API. A 415 means the clip has no raw audio: fetch it whole instead.
+
+Right after the student speaks, an `op: "react"` (`{ text, audio }`) brings a short instant reaction in the same voice ("Hmm, interesting…"). Play it at once; the reply's first clip cuts it off.
+
 ## Other routes
 
 | Route | Returns |
 |---|---|
-| `GET /allowance` | `{ plan, sessions, used, left, period: trial\|month, minutes }` |
+| `GET /allowance` | `{ plan, sessions: null, used, left: null\|0, period: "energy", minutes, resetsAt, energy: { balance, percent, low, empty, fullAt } }`. `left` is 0 only when energy is empty, and `resetsAt` is then when it's full again. The 403 `AI_ENERGY_EMPTY` error carries the same `allowance` |
 | `GET /sessions` | History (started sessions, newest first) |
 | `GET /sessions/:id` | `{ session, guideStatus, goals }`. `guideStatus` is `ready` (Start begins teaching at once) or `building` (the tutor is preparing; it starts as soon as the session is created). Also the board now, finished `boards` (page, title, elements, `endedAt` in ms) for the thumbnail strip, notes, progress, the pending question |
 | `GET /sessions/:id/replay` | `{ session, duration, events: [{ seq, at, type, data }] }`. `at` is ms from the start. `beat` events hold the ops in order, `student` and `grade` events the answers. Play them back on the same board to show the session like a video |
@@ -74,7 +90,7 @@ Send one event at a time. Anything but `interrupt` while a beat is running gets 
   - Wrap-up starts 2 minutes before the plan's limit (15 minutes, or 30 on Elite).
   - There are 2 extra minutes of grace, then the session ends.
   - There's a hard token ceiling per session.
-- **Plan limits:** Free gets 1 trial session ever, Scholar 3 a month, Elite 12 a month. A session counts once it starts.
+- **AI energy, not session counts:** students can start as many sessions as their AI energy allows. Each beat is charged (about 1,800 energy, roughly 70,000 for a 15-minute session; tune with `TUTOR_ENERGY_SCALE`, default 0.3). Out of energy: `POST /sessions` and `start` answer 403 `AI_ENERGY_EMPTY`, and a running session wraps up gracefully. A session lasts up to the plan's minutes (15, or 30 on Elite).
 - **The teacher guide** is built once per topic and its sources, shared by everyone, with every fact's quote checked word for word against the notes.
 - **Grading runs alongside the tutor's reply.** The tutor gets the grader's verdict on its next turn, and moving to the next goal always waits for it.
 

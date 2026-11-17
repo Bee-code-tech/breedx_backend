@@ -174,6 +174,8 @@ export interface UsageRecord {
   tokens: TokenCount;
   /** The student's model. Leave out for work that costs them no energy. */
   model?: AiModelId;
+  /** A set energy price instead of tokens × a model's rate (the tutor prices its own beats). */
+  energy?: number;
   material?: Types.ObjectId | string;
   session?: Types.ObjectId | string;
 }
@@ -185,7 +187,7 @@ export interface UsageRecord {
 export const recordUsage = async (record: UsageRecord): Promise<{ energy: number; charge: Charge | null }> => {
   const { inputTokens, outputTokens } = record.tokens;
   if (!inputTokens && !outputTokens) return { energy: 0, charge: null };
-  const energy = record.model ? (inputTokens + outputTokens) * AI_MODELS[record.model].energy : 0;
+  const energy = Math.round(record.energy ?? (record.model ? (inputTokens + outputTokens) * AI_MODELS[record.model].energy : 0));
 
   await AiUsage.create({
     user: record.userId,

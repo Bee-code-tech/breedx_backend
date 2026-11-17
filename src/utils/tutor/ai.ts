@@ -51,8 +51,10 @@ const gemini = new GoogleGenAI({ vertexai: true, project: env.GCP_PROJECT, locat
 
 // Thinking per job on Gemini: a little for live beats (speed), more where quality matters
 const GEMINI_THINKING = {
-  // No thinking for live beats: tests showed it halves the wait with no drop in teaching
-  beat: Number(process.env.TUTOR_BEAT_THINKING ?? 0),
+  // Teaching beats are prepared while the previous one plays, so they can afford some thinking
+  beat: Number(process.env.TUTOR_BEAT_THINKING ?? 1024),
+  // A reply to what the student just said: they're waiting, so less
+  reply: Number(process.env.TUTOR_REPLY_THINKING ?? 256),
   reteach: 1024,
   guide: 4096,
   listener: 0,
@@ -201,7 +203,7 @@ export interface BeatResult {
 }
 
 export interface BeatOptions {
-  job: 'beat' | 'reteach';
+  job: 'beat' | 'reply' | 'reteach';
   system: string;
   /** Earlier turns, exactly as a previous beat returned them. */
   history: unknown[];
@@ -276,6 +278,9 @@ const geminiBeat = async (options: BeatOptions, model: string): Promise<BeatResu
     { text: options.text },
   ];
   const contents: Content[] = [...(options.history as Content[]), { role: 'user', parts }];
+  if (process.env.TUTOR_DEBUG === '1') {
+    console.log('[tutor] sending', contents.map((c) => `${c.role}(${(c.parts ?? []).map((p) => Object.keys(p).filter((k) => k !== 'thoughtSignature').join('+')).join(',')})`).join(' '));
+  }
   const stream = await gemini.models.generateContentStream({
     model,
     contents,
@@ -351,8 +356,17 @@ export const runBeat = async (provider: TutorProvider, options: BeatOptions): Pr
     return await run(options, models.beat);
   } catch (error) {
     // Still busy: the backup model answers now rather than the student waiting
-    if (options.signal.aborted || !isBusy(error) || models.backup === models.beat) throw error;
-    console.error(`${models.beat} busy, using ${models.backup} for this beat`);
-    return withRetry(() => once(options, models.backup), options.signal);
+    if (options.signal.aborted || !isBusy(error)) throw error;
+    if (models.backup !== models.beat) {
+      console.error(`${models.beat} busy, using ${models.backup} for this beat`);
+      try {
+        return await once(options, models.backup);
+      } catch (backupError) {
+        // The backup can't always continue another model's conversation (Gemini Flash-Lite can't): keep waiting on the usual one
+        if (options.signal.aborted) throw backupError;
+        console.error(`${models.backup} failed too (${(backupError as Error).message.slice(0, 80)}), waiting for ${models.beat}`);
+      }
+    }
+    return withRetry(() => once(options, models.beat), options.signal, RETRY_DELAYS_MS);
   }
 };

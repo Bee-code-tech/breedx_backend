@@ -7,9 +7,11 @@
  *   npx ts-node -T evals/tutor/run.ts
  *   PERSONAS=bluffer,misconception MATERIALS=cs,ee BEATS=10 CONCURRENCY=3 npx ts-node -T evals/tutor/run.ts
  *
- * Uses the tutor's own settings (TUTOR_PROVIDER etc.) and the database in .env.
- * Test users, files and sessions are deleted afterwards. A report is saved to
- * evals/tutor/results/.
+ * Uses the tutor's own settings (TUTOR_PROVIDER etc.) and the cluster in .env,
+ * but its own database (EVAL_DB, default "breedx-eval"), never production.
+ * Test data is deleted afterwards, and anything a crashed run left is cleared
+ * at the start. Each case runs REPEATS times (default 2) and is averaged, as
+ * single runs vary a lot. A report is saved to evals/tutor/results/.
  */
 import fs from 'fs';
 import path from 'path';
@@ -223,7 +225,18 @@ const runOne = async (base: string, persona: Persona, materialId: string, beatsM
     let totalMs = 0;
     for (let beat = 1; beat <= beatsMax; beat++) {
       const started = Date.now();
-      const out = await readStream(await fetch(`${base}/tutor/sessions/${sessionId}/events`, { method: 'POST', headers, body: JSON.stringify(event) }));
+      const response = await fetch(`${base}/tutor/sessions/${sessionId}/events`, { method: 'POST', headers, body: JSON.stringify(event) });
+      if (process.env.EVAL_DEBUG === '1') {
+        const raw = await response.clone().text();
+        console.log(`[eval ${persona.id} beat ${beat}] status ${response.status}: ${raw.replace(/\s+/g, ' ').slice(0, 400)}`);
+      }
+      if (!response.ok) {
+        // An error answer (not a stream) is an error, not a silent beat
+        result.errors++;
+        transcript.push(`[error ${response.status}: ${(await response.text()).slice(0, 160)}]`);
+        break;
+      }
+      const out = await readStream(response);
       totalMs += Date.now() - started;
       result.beats++;
       if (out.error) {
@@ -331,12 +344,32 @@ const pool = async <I, O>(items: I[], size: number, work: (item: I) => Promise<O
   const materials = (process.env.MATERIALS || Object.keys(MATERIALS).join(',')).split(',').map((id) => id.trim()).filter((id) => MATERIALS[id]);
   const beats = Number(process.env.BEATS || 10);
   const concurrency = Number(process.env.CONCURRENCY || 3);
+  const repeats = Math.max(1, Number(process.env.REPEATS || 2));
 
-  await mongoose.connect(env.MONGODB_URI);
+  // Its own database on the same cluster: evaluations never touch real students' data
+  const dbName = process.env.EVAL_DB || 'breedx-eval';
+  if (/prod/i.test(dbName)) throw new Error('Refusing to run evaluations on a production database');
+  await mongoose.connect(env.MONGODB_URI, { dbName });
+  // Leftovers from a run that crashed
+  const stale = await User.find({ email: /^eval-.+@breedx\.test$/ }).select('_id').lean();
+  if (stale.length) {
+    const ids = stale.map((user: { _id: unknown }) => user._id);
+    await Promise.all([
+      T.TutorSession.deleteMany({ user: { $in: ids } }),
+      T.StudentProfile.deleteMany({ user: { $in: ids } }),
+      LibraryFile.deleteMany({ owner: { $in: ids } }),
+      Library.deleteMany({ owner: { $in: ids } }),
+      Session.deleteMany({ user: { $in: ids } }),
+      User.deleteMany({ _id: { $in: ids } }),
+    ]);
+    console.log(`Cleared ${stale.length} test accounts left by an earlier run`);
+  }
   const server = app.listen(0);
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
-  const jobs = materials.flatMap((material) => personas.map((persona) => ({ persona, material })));
-  console.log(`Running ${jobs.length} sessions (${beats} beats each, ${concurrency} at a time) on ${process.env.TUTOR_PROVIDER || 'gemini'}…`);
+  const jobs = materials.flatMap((material) =>
+    personas.flatMap((persona) => Array.from({ length: repeats }, () => ({ persona, material })))
+  );
+  console.log(`Running ${jobs.length} sessions (${repeats}× each case, ${beats} beats, ${concurrency} at a time) on ${process.env.TUTOR_PROVIDER || 'gemini'}, database ${dbName}…`);
 
   const results = await pool(jobs, concurrency, async ({ persona, material }) => {
     const result = await runOne(base, persona, material, beats);
@@ -370,6 +403,17 @@ const pool = async <I, O>(items: I[], size: number, work: (item: I) => Promise<O
     longSays: results.reduce((n, r) => n + r.longSays, 0),
     errors: results.reduce((n, r) => n + r.errors, 0),
   };
+  // Each case averaged over its repeats
+  const cases = new Map<string, RunResult[]>();
+  for (const result of results) cases.set(`${result.material}/${result.persona}`, [...(cases.get(`${result.material}/${result.persona}`) ?? []), result]);
+  console.log('\nPER CASE (averaged):');
+  for (const [name, runs] of cases) {
+    const scores = runs.map((run) => run.judge?.overall).filter((value): value is number => typeof value === 'number');
+    console.log(
+      `  ${name.padEnd(18)} judge ${avg(scores)}/10 (${scores.join(', ')}) · gain ${avg(runs.map((run) => run.gain))} · ` +
+        `invented ${runs.reduce((n, run) => n + ((run.judge?.invented_facts as unknown[] | undefined)?.length ?? 0), 0)}`
+    );
+  }
   console.log('\nSUMMARY', JSON.stringify(summary, null, 2));
   console.log('\nBIGGEST PROBLEMS:');
   for (const r of judged) console.log(`- ${r.material}/${r.persona}: ${r.judge!.biggest_problem}`);

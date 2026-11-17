@@ -6,17 +6,32 @@ import Material from '../models/material.model';
 import Space from '../models/space.model';
 import SpaceMember from '../models/spaceMember.model';
 import { StudentProfile, TeacherGuide, TutorEvent, TutorSession } from '../models/tutor.model';
+import User from '../models/user.model';
 import { AuthRequest } from '../types/auth';
 import { ISpaceMaterial } from '../types/space';
 import { GuideSource, ITeacherGuide, ITutorSession } from '../types/tutor';
 import { topicsOf } from '../utils/ai/bank';
 import { courseMapFor } from '../utils/ai/courseMap';
 import { prepareMaterial } from '../utils/ai/process';
+import { energyFor } from '../utils/ai/energy';
 import { planFor } from '../utils/plan';
 import { sendError, sendSuccess } from '../utils/response';
-import { clipPathOf, pendingClip, recentClip } from '../utils/speech';
+import {
+  clipPathOf,
+  countryName,
+  isWav,
+  liveClip,
+  PCM_RATE,
+  pendingClip,
+  recentClip,
+  startTutorClip,
+  TUTOR_VOICES,
+  TutorVoiceId,
+  VOICE_PREVIEW,
+  warmUpReactions,
+} from '../utils/speech';
 import { openStream, Stream } from '../utils/sse';
-import { readObject } from '../utils/storage';
+import { downloadObject, getObject } from '../utils/storage';
 import { currentProvider } from '../utils/tutor/ai';
 import { guideFor, prebuildGuide, signatureOf } from '../utils/tutor/guide';
 import { finish, runTurn, StudentEvent } from '../utils/tutor/engine';
@@ -30,21 +45,25 @@ const startOfMonth = () => {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 };
 
-/** Sessions used and left on the student's plan. Only started sessions count. */
+/**
+ * Whether the student can start a tutor session. Sessions aren't counted:
+ * each beat is paid for with AI energy, so they can have as many as their
+ * energy allows. A session lasts up to their plan's minutes.
+ */
 const allowanceFor = async (userId: string) => {
   const { plan, limits } = await planFor(userId);
-  const { tutor } = limits;
-  const used = await TutorSession.countDocuments({
-    user: userId,
-    startedAt: tutor.lifetime ? { $ne: null } : { $gte: startOfMonth() },
-  });
+  const energy = await energyFor(userId);
+  const used = await TutorSession.countDocuments({ user: userId, startedAt: { $gte: startOfMonth() } });
   return {
     plan,
-    sessions: tutor.sessions,
+    // Sessions aren't limited; kept for older app versions
+    sessions: null,
     used,
-    left: Math.max(0, tutor.sessions - used),
-    period: tutor.lifetime ? 'trial' : 'month',
-    minutes: tutor.minutes,
+    left: energy.empty ? 0 : null,
+    period: 'energy',
+    minutes: limits.tutor.minutes,
+    resetsAt: energy.empty ? energy.fullAt : null,
+    energy: { balance: energy.balance, percent: energy.percent, low: energy.low, empty: energy.empty, fullAt: energy.fullAt },
   };
 };
 
@@ -61,7 +80,8 @@ const toPublicSession = (session: ITutorSession) => ({
   boards: session.boards ?? [],
   notes: session.notes,
   pending: session.pending ? { level: session.pending.level, question: session.pending.question, options: session.pending.options ?? [] } : null,
-  voice: session.voice,
+  voice: session.voice === 'warm' ? 'female' : session.voice === 'calm' ? 'male' : session.voice,
+  accent: session.accent ?? '',
   minutes: session.minutes,
   startedAt: session.startedAt,
   endedAt: session.endedAt,
@@ -114,6 +134,59 @@ const resolveTopic = async (
     };
   }
   return { error: 'Send fileId, or spaceId and courseId', status: 400 };
+};
+
+// Accents the voice picker offers; the student's own country is always added
+const ACCENTS = ['NG', 'GH', 'KE', 'ZA', 'UG', 'TZ', 'RW', 'ET', 'EG', 'GB', 'US', 'CA', 'AU', 'IN', 'PK', 'PH', 'SG', 'AE', 'IE', 'JM'];
+
+/** The voice for a session: what they picked, else male with their own country's accent. */
+const voiceChoice = async (userId: string, body: Record<string, unknown>) => {
+  const voice: TutorVoiceId = (TUTOR_VOICES as readonly string[]).includes(String(body.voice)) ? (body.voice as TutorVoiceId) : 'male';
+  const picked = typeof body.accent === 'string' ? body.accent.toUpperCase() : '';
+  if (picked === 'NEUTRAL') return { voice, accent: '' };
+  if (countryName(picked)) return { voice, accent: picked };
+  const user = await User.findById(userId).select('country').lean();
+  const own = String(user?.country ?? '').toUpperCase();
+  return { voice, accent: countryName(own) ? own : '' };
+};
+
+/**
+ * GET /tutor/voices: the voice picker. The default is the student's own
+ * country's accent; they can pick another accent or a neutral one.
+ */
+export const listVoices = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const choice = await voiceChoice(req.user!.id, {});
+    const codes = [...new Set([choice.accent, ...ACCENTS].filter(Boolean))];
+    sendSuccess(res, {
+      default: choice,
+      voices: [
+        { id: 'male', label: 'Male' },
+        { id: 'female', label: 'Female' },
+      ],
+      accents: [
+        ...codes.map((code) => ({ code, label: `English (${countryName(code)})` })),
+        { code: 'NEUTRAL', label: 'English (neutral)' },
+      ],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** POST /tutor/voices/preview { voice?, accent? } → { audio, text }: a sample line to hear a voice first. */
+export const previewVoice = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const choice = await voiceChoice(req.user!.id, req.body ?? {});
+    const clip = await startTutorClip(VOICE_PREVIEW, choice);
+    if (!clip) {
+      sendError(res, 'Voice previews are unavailable right now', 503);
+      return;
+    }
+    sendSuccess(res, { audio: clip.id, text: VOICE_PREVIEW, ...choice });
+  } catch (error) {
+    next(error);
+  }
 };
 
 // GET /tutor/allowance
@@ -183,13 +256,11 @@ export const createSession = async (req: AuthRequest, res: Response, next: NextF
   try {
     const userId = req.user!.id;
     const allowance = await allowanceFor(userId);
-    if (allowance.left <= 0) {
-      sendError(
-        res,
-        allowance.period === 'trial' ? "You've used your free tutor session" : "You've used this month's tutor sessions",
-        403,
-        { code: 'PLAN_LIMIT', limit: 'tutorSessions', allowance }
-      );
+    if (allowance.energy.empty) {
+      sendError(res, "You're out of AI energy. It refills over time, or top up to keep going.", 403, {
+        code: 'AI_ENERGY_EMPTY',
+        allowance,
+      });
       return;
     }
     const topic = await resolveTopic(userId, req.body ?? {});
@@ -202,13 +273,16 @@ export const createSession = async (req: AuthRequest, res: Response, next: NextF
       sources: topic.sources,
       scope: topic.scope,
       title: topic.title,
-      voice: req.body?.voice === 'calm' ? 'calm' : 'warm',
+      // Their own country's English accent unless they chose another
+      ...(await voiceChoice(userId, req.body ?? {})),
       minutes: allowance.minutes,
       provider: currentProvider(),
     });
     sendSuccess(res, { session: toPublicSession(session), allowance }, 'Session ready', 201);
     // Start preparing the tutor now, so "Start" is instant once the student taps it
     prebuildGuide(topic.sources, topic.title, userId);
+    // And this student's instant reactions, in their voice and accent
+    void warmUpReactions({ voice: session.voice === 'female' ? 'female' : 'male', accent: session.accent ?? '' });
   } catch (error) {
     next(error);
   }
@@ -254,8 +328,8 @@ export const sendEvent = async (req: AuthRequest, res: Response, next: NextFunct
         sendError(res, 'Start the session first', 409);
         return;
       }
-      if ((await allowanceFor(userId)).left <= 0) {
-        sendError(res, "You've used your tutor sessions for now", 403, { code: 'PLAN_LIMIT', limit: 'tutorSessions' });
+      if ((await energyFor(userId)).empty) {
+        sendError(res, "You're out of AI energy. It refills over time, or top up to keep going.", 403, { code: 'AI_ENERGY_EMPTY' });
         return;
       }
     }
@@ -276,7 +350,12 @@ export const sendEvent = async (req: AuthRequest, res: Response, next: NextFunct
       type === 'answer'
         ? { type, text, ...(typeof req.body?.choice === 'number' ? { choice: req.body.choice } : {}) }
         : type === 'interrupt'
-          ? { type, text, ...(Number.isInteger(req.body?.clip) && req.body.clip >= 0 ? { clip: req.body.clip } : {}) }
+          ? {
+              type,
+              text,
+              ...(Number.isInteger(req.body?.clip) && req.body.clip >= 0 ? { clip: req.body.clip } : {}),
+              ...(Number.isInteger(req.body?.beat) ? { beat: req.body.beat } : {}),
+            }
           : type === 'speak'
             ? { type, text }
             : { type };
@@ -372,31 +451,66 @@ export const getReplay = async (req: AuthRequest, res: Response, next: NextFunct
   }
 };
 
-/** GET /tutor/audio/:clipId: one spoken line (MP3), for live play and replays. */
+/**
+ * GET /tutor/audio/:clipId: one spoken line, for live play and replays.
+ * Default: the whole file (WAV for the Gemini voice, MP3 otherwise), waiting
+ * for it if it's still being made. `?stream=pcm`: raw audio (16-bit
+ * little-endian, mono, 24 kHz) passed on as it's made, so playback can start
+ * about a second in. 415 when the clip has no raw audio (fetch it whole).
+ */
 export const getAudio = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const path = clipPathOf(String(req.params.clipId));
+    const id = String(req.params.clipId);
+    const path = clipPathOf(id);
     if (!path) {
       sendError(res, 'Clip not found', 404);
       return;
     }
-    res.setHeader('Content-Type', 'audio/mpeg');
+    const wantPcm = req.query.stream === 'pcm';
     res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
-    // Still being made: wait for it (usually a second or two)
-    const making = pendingClip(String(req.params.clipId));
+
+    // Being streamed right now: pass the audio on as it arrives
+    const live = liveClip(id);
+    if (wantPcm && live && !live.failed) {
+      res.setHeader('Content-Type', `audio/pcm;rate=${PCM_RATE};channels=1;bits=16`);
+      res.setHeader('X-Accel-Buffering', 'no');
+      for (const chunk of live.chunks) res.write(chunk);
+      if (live.done) {
+        res.end();
+        return;
+      }
+      const listener = (chunk: Buffer | null) => (chunk ? res.write(chunk) : res.end());
+      live.listeners.add(listener);
+      res.on('close', () => live.listeners.delete(listener));
+      return;
+    }
+
+    // Otherwise the whole clip, once it's ready
+    const making = pendingClip(id);
     if (making && !(await making)) {
       sendError(res, 'This line has no audio; use the device voice', 404);
       return;
     }
-    const fresh = recentClip(String(req.params.clipId));
+    const send = (data: Buffer) => {
+      if (wantPcm && !isWav(data)) {
+        sendError(res, 'No raw audio for this clip; fetch it whole', 415);
+        return;
+      }
+      const body = wantPcm ? data.subarray(44) : data;
+      res.setHeader('Content-Type', wantPcm ? `audio/pcm;rate=${PCM_RATE};channels=1;bits=16` : isWav(data) ? 'audio/wav' : 'audio/mpeg');
+      res.setHeader('Content-Length', String(body.length));
+      res.end(body);
+    };
+    const fresh = recentClip(id);
     if (fresh) {
-      res.setHeader('Content-Length', String(fresh.length));
-      res.end(fresh);
+      send(fresh);
       return;
     }
-    readObject(path)
-      .on('error', () => (res.headersSent ? res.destroy() : sendError(res, 'Clip not found', 404)))
-      .pipe(res);
+    if (!(await getObject(path))) {
+      sendError(res, 'Clip not found', 404);
+      return;
+    }
+    send(await downloadObject(path));
   } catch (error) {
     next(error);
   }

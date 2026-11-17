@@ -220,8 +220,17 @@ export const guideFor = async (
   const mine = !claim.lastErrorObject?.updatedExisting;
 
   const stale = guide.status === 'building' && Date.now() - guide._id.getTimestamp().getTime() > STALE_MS;
-  if (mine || guide.status === 'failed' || stale) {
-    if (!mine) await TeacherGuide.updateOne({ _id: guide._id }, { $set: { status: 'building' } });
+  // A failed or stuck guide is rebuilt by exactly one request; the others wait for it
+  const takeOver =
+    !mine &&
+    (guide.status === 'failed' || stale) &&
+    (
+      await TeacherGuide.updateOne(
+        { _id: guide._id, status: guide.status },
+        { $set: { status: 'building', builtAt: null } }
+      )
+    ).modifiedCount === 1;
+  if (mine || takeOver) {
     onWait?.('Reading the topic and planning how to teach it…');
     try {
       await build(guide._id, sources, topicTitle, userId);
@@ -231,7 +240,8 @@ export const guideFor = async (
     }
   } else {
     // Someone else is building it: wait for theirs
-    for (let waited = 0; guide.status === 'building' && waited < STALE_MS; waited += WAIT_STEP_MS) {
+    for (let waited = 0; (guide.status === 'building' || guide.status === 'failed') && waited < STALE_MS; waited += WAIT_STEP_MS) {
+      if (guide.status === 'failed' && waited > 0) break;
       onWait?.('Your tutor is getting ready…');
       await new Promise((resolve) => setTimeout(resolve, WAIT_STEP_MS));
       guide = (await TeacherGuide.findById(guide._id))!;
