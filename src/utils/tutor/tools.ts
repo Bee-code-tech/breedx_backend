@@ -45,8 +45,10 @@ export const tutorTools: Anthropic.Tool[] = [
   {
     name: 'draw',
     description:
-      'Add up to 5 elements to the board. Give each a new unique id so you can point back to it later. ' +
-      'Check board_state.space_left first: when it is low, call new_board before drawing.',
+      'Write up to 5 marks on the board as you speak — build a spatial picture (parts in zones, arrows between them), not a paragraph that pops in finished. ' +
+      'Every element needs on_word (a word from this beat\'s say) so it is written in sync with your voice. Give each a new unique id. ' +
+      'Pick role as the marker colour: structure chalk, term sky, flow amber (rays/motion), student lime, caution coral. ' +
+      'Check board_state.space_left: when low, fade or new_board first. Flowchart only for algorithms; optics/anatomy/forces use labels + arrows in zones.',
     input_schema: {
       type: 'object',
       properties: {
@@ -61,11 +63,13 @@ export const tutorTools: Anthropic.Tool[] = [
                 type: 'string',
                 enum: [...DRAW_KINDS],
                 description:
-                  'asset: pre-drawn illustration (asset_id). label: text with a leader line to `target`. arrow: from -> to. ' +
-                  'focus_ring: dotted ring around `target`. student_tag: the student\'s own term, tagged YOURS. careful: misconception callout. ' +
-                  'key_point: short handwritten fact. equation: LaTeX in `latex`. molecule: SMILES in `smiles`. flowchart: Mermaid in `mermaid`. ' +
+                  'label: named part of the diagram (use zone). arrow: from -> to (rays, forces, flow). ' +
+                  'focus_ring: dotted ring around `target`. key_point: short caption (not a full explanation). ' +
+                  'equation: LaTeX in `latex`. molecule: SMILES in `smiles`. ' +
+                  'flowchart: Mermaid ONLY for step processes/algorithms. ' +
                   'graph: function plot, `graph` = {"functions":["(1-x)*1500"],"x":[0,1],"y":[0,1600],"x_label":"s","y_label":"Nr"}. ' +
-                  'circuit: `circuit` = a simple netlist, one part per line, e.g. "V1 n1 0 230V\\nR1 n1 n2 10ohm". chart: Vega-Lite JSON in `chart`.',
+                  'circuit: `circuit` = a simple netlist, one part per line. chart: Vega-Lite JSON in `chart`. ' +
+                  'student_tag / careful: student term or misconception callout. asset: not available yet.',
               },
               role,
               text: { type: 'string' },
@@ -92,16 +96,27 @@ export const tutorTools: Anthropic.Tool[] = [
   },
   {
     name: 'highlight',
-    description: 'Pulse existing board elements you are referring to (instead of redrawing them).',
+    description:
+      'Point at existing board elements while you talk about them (pulse). Always set on_word. Prefer this over redrawing.',
     input_schema: {
       type: 'object',
       properties: { ids: { type: 'array', items: { type: 'string' } }, on_word: onWord },
-      required: ['ids'],
+      required: ['ids', 'on_word'],
+    },
+  },
+  {
+    name: 'zoom',
+    description:
+      'Bring one or more board elements into view and focus the camera on them — use when the part you are discussing may be off-screen or lost on a busy board. Always set on_word.',
+    input_schema: {
+      type: 'object',
+      properties: { ids: { type: 'array', items: { type: 'string' } }, on_word: onWord },
+      required: ['ids', 'on_word'],
     },
   },
   {
     name: 'fade',
-    description: 'Fade elements to 30% when moving to a new concept. Faded elements are cleared first when space runs out.',
+    description: 'Fade elements to 30% when moving to a new concept (clean the board). Faded elements are cleared first when space runs out.',
     input_schema: {
       type: 'object',
       properties: { ids: { type: 'array', items: { type: 'string' } } },

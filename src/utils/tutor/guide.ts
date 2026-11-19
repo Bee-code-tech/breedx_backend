@@ -102,7 +102,7 @@ Write 2 to 5 learning goals in teaching order. Each goal is one concept a studen
 - key_facts: 3 to 6 facts the tutor will teach. Each has a "quote": one or two sentences copied EXACTLY, word for word, from the material that prove it, and the page it is on (the [p. N] marker above the text).
 - misconceptions: 1 to 3 specific wrong beliefs students really hold about it, each with why it is wrong.
 - styles: three different ways to explain it.
-  - diagram: what to draw (description) and a board plan (board) in plain words, e.g. "Equation: Nr = (1 - s) Ns. Arrow from 'field speed' to 'rotor speed' labelled 'lags by slip'." Use only: labels, arrows, focus rings, key points, equations (LaTeX), flowcharts (Mermaid), function graphs, simple circuits, molecules (SMILES) or charts.
+  - diagram: what to draw (description) and a board plan (board) in plain words that builds a SPATIAL picture across beats. Name parts and their zones (left/main/right), and the arrows between them. Example for optics: "Left: Object. Main: convex lens with F and 2F marks. Right: Image. Arrows: three rays from Object through the lens to Image." Example for machines: "Equation: Nr = (1 - s) Ns. Arrow from 'field speed' to 'rotor speed' labelled 'lags by slip'." Prefer labels, arrows, focus rings, equations, graphs, circuits, molecules. Use a flowchart only when the concept itself is a process or algorithm — never for physical objects or anatomy.
   - analogy: an everyday analogy a Nigerian university student would relate to, and where it breaks down.
   - worked_example: a short example worked step by step, using the material's own numbers or notation where it has them.
 - checks: questions at four levels, each with "expected" = what a correct answer must contain, in any wording.

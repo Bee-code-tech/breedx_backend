@@ -229,13 +229,40 @@ export const countryName = (code: string) => {
     return null;
   }
 };
+/** Adjectival forms that TTS follows better than "English accent from X". */
+const ACCENT_LABEL: Record<string, string> = {
+  NG: 'Nigerian',
+  GH: 'Ghanaian',
+  KE: 'Kenyan',
+  ZA: 'South African',
+  UG: 'Ugandan',
+  TZ: 'Tanzanian',
+  RW: 'Rwandan',
+  ET: 'Ethiopian',
+  EG: 'Egyptian',
+  GB: 'British',
+  US: 'American',
+  CA: 'Canadian',
+  AU: 'Australian',
+  IN: 'Indian',
+  PK: 'Pakistani',
+  PH: 'Filipino',
+  SG: 'Singaporean',
+  AE: 'Emirati',
+  IE: 'Irish',
+  JM: 'Jamaican',
+};
+
 const accentLine = (code: string) => {
+  // Exact phrasing that produced the good Nigerian Charon sample
+  const label = ACCENT_LABEL[code];
+  if (label) return ` Speak with a natural ${label} English accent.`;
   const name = countryName(code);
-  return name ? ` Speak with a natural English accent from ${name}, the way an educated tutor there would.` : '';
+  return name ? ` Speak with a natural English accent from ${name}.` : '';
 };
 
 // How the tutor should sound. Changing it changes every clip, so bump the version too
-const GEMINI_STYLE_VERSION = 'v2';
+const GEMINI_STYLE_VERSION = 'v3';
 const GEMINI_STYLE =
   process.env.TUTOR_VOICE_STYLE ||
   'You are a warm, playful university tutor talking one-on-one with a student you like. Speak naturally, like a real person ' +
@@ -259,8 +286,9 @@ const performable = (text: string) =>
 
 /** Short reactions in the tutor's voice, played the moment the student finishes speaking. */
 export const REACTIONS = {
-  answer: ['Mm, okay…', 'Alright, let\'s see…', 'Hmm, interesting…', 'Okay, okay…'],
-  interrupt: ['Oh — good question!', 'Ooh, okay, hold that thought…', 'Ah, yes — let\'s look at that.'],
+  answer: ['Mm, okay…', 'Alright, let\'s see…', 'Okay, okay…'],
+  // Don't assume they asked a question: mic noise / echo used to fire "good question!" on a loop
+  interrupt: ['Oh — hang on…', 'Okay, one sec…', 'Alright…'],
   speak: ['Mm-hmm…', 'Okay…'],
 } as const;
 
@@ -343,7 +371,12 @@ const startGeminiClip = async (rawText: string, tutorVoice: TutorVoice, backgrou
         ttsPausedUntil.set(exhausted, Date.now() + 20_000);
       }
       if (background) return null;
-      // The Gemini voice failed: Google's HD voice says it rather than silence
+      // Accented sessions stay on Gemini or the device voice: British Chirp would drop the accent
+      if (tutorVoice.accent) {
+        console.error('Gemini voice failed (no British fallback with accent):', (error as Error).message);
+        return null;
+      }
+      // Neutral accent only: Google's HD voice rather than silence
       console.error('Gemini voice failed, using the HD voice for this line:', (error as Error).message);
       try {
         const [response] = await client.synthesizeSpeech({

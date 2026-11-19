@@ -42,8 +42,9 @@ Send one event at a time. Anything but `interrupt` while a beat is running gets 
 |---|---|---|
 | `say` | `beat`, `text`, `audio`, `clips: [{ text, audio }]` | Play each clip in order with `GET /audio/:audio` (MP3), one per sentence. A clip with `audio: null` (the month's free voice is used up) is spoken with the device voice. Show `text` as subtitles straight away |
 | `draw` | `elements[]`: `{ id, kind, role, text?, target?, from?, to?, latex?, smiles?, mermaid?, graph?, circuit?, chart?, asset_id?, zone?, on_word? }` | Draw them, starting each when the voice reaches `on_word` |
-| `highlight` | `ids`, `on_word?` | Pulse those elements |
-| `fade` | `ids` | Fade to 30% |
+| `highlight` | `ids`, `on_word` | Point at those elements (pulse) as that word is spoken; also scrolls them into view |
+| `zoom` | `ids`, `on_word` | Bring those elements into view and briefly enlarge them — use when the part may be off-screen or lost on a busy board |
+| `fade` | `ids` | Fade to 30% (clean the board before a new idea) |
 | `remove` | `ids` | Clear faded elements to make room |
 | `new_board` | `page`, `title`, `keep` | Wipe with the eraser animation, save the old board as a thumbnail, carry `keep` ids into a recap corner. `title` is the tutor's, or the current goal's when the app flipped the board because it was full |
 | `board_title` | `page`, `title` | Name the current board (sent instead of `new_board` when the board is already empty) |
@@ -67,7 +68,7 @@ The voice is Gemini's own speech (NotebookLM-style): male (Charon, the default) 
 
 Clips: `GET /audio/:id` returns the whole file (WAV for this voice), waiting while it's made. **`GET /audio/:id?stream=pcm`** passes raw audio on as it's generated (16-bit signed little-endian, mono, 24 kHz), so playback can start about a second in. Play it with the Web Audio API. A 415 means the clip has no raw audio: fetch it whole instead.
 
-Right after the student speaks, an `op: "react"` (`{ text, audio }`) brings a short instant reaction in the same voice ("Hmm, interesting…"). Play it at once; the reply's first clip cuts it off.
+Right after the student speaks, an `op: "react"` (`{ text, audio }`) brings a short instant reaction in the same voice ("Okay…"). Play it at once; the reply's first clip cuts it off. Speech that mostly matches what the tutor just said (speaker echo) is ignored and treated as `beat_done`.
 
 ## Other routes
 
