@@ -82,6 +82,9 @@ export interface Citation {
   /** Course materials: open with /spaces/:spaceSlug/materials/:spaceMaterialId. */
   spaceSlug?: string | null;
   spaceMaterialId?: Types.ObjectId | null;
+  /** "web" for a page from Google Search (then `url` and `fileName` = the page title), else a file. */
+  kind?: 'file' | 'web';
+  url?: string | null;
 }
 
 export interface MessageStep {

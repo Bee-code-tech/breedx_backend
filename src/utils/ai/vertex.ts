@@ -46,6 +46,8 @@ export interface GenerateOptions {
   temperature?: number;
   maxOutputTokens?: number;
   signal?: AbortSignal;
+  /** Let the model search Google for current facts; the pages it used come back as `web`. */
+  webSearch?: boolean;
 }
 
 const configFor = (options: GenerateOptions): GenerateContentConfig => ({
@@ -53,6 +55,7 @@ const configFor = (options: GenerateOptions): GenerateContentConfig => ({
   temperature: options.temperature,
   maxOutputTokens: options.maxOutputTokens,
   abortSignal: options.signal,
+  ...(options.webSearch && { tools: [{ googleSearch: {} }] }),
   ...(options.json && { responseMimeType: 'application/json', responseJsonSchema: options.json }),
   ...(options.engine.thinkingBudget !== null && {
     thinkingConfig: { thinkingBudget: options.engine.thinkingBudget },
@@ -87,7 +90,7 @@ export const generateJson = async <T>(options: GenerateOptions & { json: Record<
 export const generateStream = async (
   options: GenerateOptions,
   onText: (text: string) => void
-): Promise<{ text: string; tokens: TokenCount }> => {
+): Promise<{ text: string; tokens: TokenCount; web: { url: string; title: string }[] }> => {
   const stream = await ai.models.generateContentStream({
     model: options.engine.model,
     contents: contentsFor(options),
@@ -96,6 +99,7 @@ export const generateStream = async (
 
   let text = '';
   let usage: UsageMetadata | undefined;
+  const web = new Map<string, string>();
   for await (const chunk of stream) {
     const piece = chunk.text ?? '';
     if (piece) {
@@ -103,8 +107,12 @@ export const generateStream = async (
       onText(piece);
     }
     if (chunk.usageMetadata) usage = chunk.usageMetadata;
+    // Web pages Google Search found and the answer drew on
+    for (const source of chunk.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []) {
+      if (source.web?.uri) web.set(source.web.uri, source.web.title ?? source.web.domain ?? source.web.uri);
+    }
   }
-  return { text, tokens: tokensFrom(usage) };
+  return { text, tokens: tokensFrom(usage), web: [...web].map(([url, title]) => ({ url, title })) };
 };
 
 export type EmbedTask = 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY';

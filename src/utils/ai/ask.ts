@@ -59,9 +59,17 @@ export const askSystemPrompt = (student: Student, modelId: AiModelId, summary: s
     .join('\n');
 
 /** The question with the passages found in the student's files, numbered for citing. */
-export const askPrompt = (question: string, sources: Citation[]) => {
+export const askPrompt = (question: string, sources: Citation[], noFiles = false) => {
+  if (!sources.length && noFiles) {
+    // Like any chat AI: no files to prefer, so just answer well (with web search when it's on)
+    return (
+      "The student hasn't added any files to this chat. Answer like a knowledgeable tutor from general knowledge " +
+      'and any web search results. Don\'t mention notes or files, and don\'t add a "From general knowledge" line.' +
+      `\n\nQuestion: ${question}`
+    );
+  }
   if (!sources.length) {
-    return `There are no sources: none of the student's files cover this chat.\n\nQuestion: ${question}`;
+    return `There are no sources: none of the student's files cover this question.\n\nQuestion: ${question}`;
   }
   const blocks = sources.map((source) => {
     const pages =
@@ -75,6 +83,7 @@ export const askPrompt = (question: string, sources: Citation[]) => {
 
 /** Which sources an answer cited, and whether it leaned on general knowledge. */
 export const readAnswer = (text: string, sourceCount: number): { cited: number[]; grounding: Grounding } => {
+  // Only file sources are cited inline; web pages are listed separately
   const cited = [...new Set([...text.matchAll(/\[(\d{1,2})\]/g)].map((match) => Number(match[1])))]
     .filter((n) => n >= 1 && n <= sourceCount)
     .sort((a, b) => a - b);

@@ -16,6 +16,8 @@ const citationSchema = new Schema(
     text: String,
     spaceSlug: { type: String, default: null },
     spaceMaterialId: { type: Schema.Types.ObjectId, default: null },
+    kind: { type: String, default: 'file' },
+    url: { type: String, default: null },
   },
   { _id: false }
 );

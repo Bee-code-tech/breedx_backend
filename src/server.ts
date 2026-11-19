@@ -3,6 +3,7 @@ import connectDB from './config/db';
 import app from './app';
 import { startReminders } from './utils/reminders';
 import { warmUpSpeech } from './utils/speech';
+import { warmUpStorage } from './utils/storage';
 
 const PORT = Number(env.PORT);
 
@@ -14,6 +15,7 @@ const start = async (): Promise<void> => {
   });
   startReminders();
   warmUpSpeech();
+  warmUpStorage();
 };
 
 start();

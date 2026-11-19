@@ -60,3 +60,11 @@ export const downloadObject = async (path: string): Promise<Buffer> => {
   const [contents] = await bucket.file(path).download();
   return contents;
 };
+
+/**
+ * Signs in to storage when the server starts: the first request otherwise
+ * waits for the sign-in (up to ~20 s with a local gcloud login). Costs nothing.
+ */
+export const warmUpStorage = () => {
+  void getObject('speech/.warm-up').catch(() => undefined);
+};

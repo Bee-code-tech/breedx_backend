@@ -376,20 +376,25 @@ export const ask = async (req: AuthRequest, res: Response, next: NextFunction): 
     const model = AI_MODELS[modelId];
     step('write', `Writing with ${model.name}…`, 'active');
     const system = askSystemPrompt(user, modelId, session.summary);
-    const prompt = askPrompt(question, sources);
+    const noFiles = !scope.byMaterial.size;
+    const prompt = askPrompt(question, sources, noFiles);
+    // Nothing from their files to go on: let it look things up on the web (AI_WEB_SEARCH=off turns this off)
+    const webSearch = !sources.length && process.env.AI_WEB_SEARCH !== 'off';
+    let web: { url: string; title: string }[] = [];
 
     let text = '';
     let tokens: TokenCount | null = null;
     let status: IAiMessage['status'] = 'complete';
     try {
       const result = await generateStream(
-        { engine: engineFor(modelId, plan), system, history, prompt, signal: live.signal },
+        { engine: engineFor(modelId, plan), system, history, prompt, signal: live.signal, webSearch },
         (piece) => {
           text += piece;
           live.send('token', { text: piece });
         }
       );
       tokens = result.tokens;
+      web = result.web;
     } catch (error) {
       if (!live.signal.aborted) throw error;
       status = 'stopped';
@@ -402,7 +407,30 @@ export const ask = async (req: AuthRequest, res: Response, next: NextFunction): 
     }
     step('write', status === 'stopped' ? 'Stopped' : 'Done');
 
-    const { cited, grounding } = readAnswer(text, sources.length);
+    const read = readAnswer(text, sources.length);
+    const { grounding } = read;
+    let { cited } = read;
+    // Web pages it drew on join the sources, numbered after the files, and count as cited
+    if (web.length) {
+      const pages: Citation[] = web.slice(0, 6).map((page, index) => ({
+        n: sources.length + index + 1,
+        kind: 'web',
+        url: page.url,
+        fileName: page.title,
+        fileId: null as unknown as Types.ObjectId,
+        libraryId: null as unknown as Types.ObjectId,
+        pageStart: 0,
+        pageEnd: 0,
+        unit: 'web',
+        chapter: '',
+        topic: '',
+        text: '',
+      }));
+      sources = [...sources, ...pages];
+      cited = [...cited, ...pages.map((page) => page.n)];
+      live.send('sources', { sources });
+      if (webSearch) step('web', `Checked ${pages.length} web page${pages.length === 1 ? '' : 's'}`);
+    }
     const { energy, charge } = await recordUsage({
       userId,
       feature: 'ask',
