@@ -518,12 +518,65 @@ export const getReplay = async (req: AuthRequest, res: Response, next: NextFunct
   }
 };
 
+// How long the audio endpoint waits on storage before giving up
+const STORAGE_WAIT_MS = 4000;
+
+/** Runs it, or gives null after `ms` (or on an error). */
+const withinMs = async <T>(ms: number, run: () => Promise<T | null>): Promise<T | null> => {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      run(),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+/**
+ * A replayed line whose clip was never saved: find it in the session's
+ * recording and voice it again. Same voice and text make the same clip id,
+ * so later replays find it.
+ */
+const revoice = async (userId: string, sessionId: unknown, clipId: string): Promise<Buffer | null> => {
+  if (!isId(sessionId)) return null;
+  const session = await TutorSession.findOne({ _id: sessionId, user: userId }).select('voice accent').lean();
+  if (!session) return null;
+  const event = await TutorEvent.findOne({
+    session: sessionId,
+    type: 'beat',
+    $or: [{ 'data.ops.audio': clipId }, { 'data.ops.clips.audio': clipId }],
+  }).lean();
+  type Clip = { text?: string; audio?: string | null };
+  type SayOp = { op?: string; text?: string; audio?: string | null; clips?: Clip[] };
+  const ops = ((event?.data as { ops?: SayOp[] } | undefined)?.ops ?? []) as SayOp[];
+  let text = '';
+  for (const op of ops) {
+    const clip = op.clips?.find((item) => item.audio === clipId);
+    if (clip?.text) text = clip.text;
+    else if (op.audio === clipId && op.text) text = op.text;
+    if (text) break;
+  }
+  if (!text) return null;
+  const clip = await startTutorClip(text, {
+    voice: session.voice === 'female' || session.voice === 'warm' ? 'female' : 'male',
+    accent: session.accent ?? '',
+  });
+  return clip ? withinMs(30_000, () => pendingClip(clip.id) ?? Promise.resolve(recentClip(clip.id))) : null;
+};
+
 /**
  * GET /tutor/audio/:clipId: one spoken line, for live play and replays.
  * Default: the whole file (WAV for the Gemini voice, MP3 otherwise), waiting
  * for it if it's still being made. `?stream=pcm`: raw audio (16-bit
  * little-endian, mono, 24 kHz) passed on as it's made, so playback can start
  * about a second in. 415 when the clip has no raw audio (fetch it whole).
+ * `?session=<id>` lets a replay re-voice a line whose clip was never saved.
  */
 export const getAudio = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -573,11 +626,19 @@ export const getAudio = async (req: AuthRequest, res: Response, next: NextFuncti
       send(fresh);
       return;
     }
-    if (!(await getObject(path))) {
-      sendError(res, 'Clip not found', 404);
+    // Storage, but never for long: a slow or broken storage connection answers "not found" fast
+    const stored = await withinMs(STORAGE_WAIT_MS, async () => ((await getObject(path)) ? downloadObject(path) : null));
+    if (stored) {
+      send(stored);
       return;
     }
-    send(await downloadObject(path));
+    // Never saved (e.g. storage was down when it was spoken): voice the line again from the recording
+    const remade = await revoice(req.user!.id, req.query.session, id);
+    if (remade) {
+      send(remade);
+      return;
+    }
+    sendError(res, 'Clip not found', 404);
   } catch (error) {
     next(error);
   }

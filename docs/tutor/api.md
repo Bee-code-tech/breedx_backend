@@ -78,7 +78,7 @@ Right after the student speaks, an `op: "react"` (`{ text, audio }`) brings a sh
 | `GET /sessions` | History (started sessions, newest first) |
 | `GET /sessions/:id` | `{ session, guideStatus, goals }`. `guideStatus` is `ready` (Start begins teaching at once) or `building` (the tutor is preparing; it starts as soon as the session is created). Also the board now, finished `boards` (page, title, elements, `endedAt` in ms) for the thumbnail strip, notes, progress, the pending question |
 | `GET /sessions/:id/replay` | `{ session, duration, events: [{ seq, at, type, data }] }`. `at` is ms from the start. `beat` events hold the ops in order, `student` and `grade` events the answers. Play them back on the same board to show the session like a video |
-| `GET /audio/:clipId` | MP3 of one spoken line |
+| `GET /audio/:clipId` | One spoken line. Add `?session=<sessionId>` in replays: a line whose clip was never saved is voiced again from the recording (same id afterwards). Storage is waited on for at most 4 s, so a miss answers 404 quickly |
 | `GET /profile` · `DELETE /profile` | What the tutor remembers (the student's own terms, misconceptions, interests), and forgetting it |
 
 ## Rules the server enforces
