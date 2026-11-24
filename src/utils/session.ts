@@ -74,6 +74,7 @@ export const toPublicUser = (user: IUser) => ({
   hasPassword: Boolean(user.password) || user.authProvider === 'local',
   country: user.country,
   role: user.role,
+  isPartner: Boolean(user.isPartner),
   plan: activePlan(user),
   planExpiresAt: activePlan(user) === 'free' ? null : user.planExpiresAt,
   authProvider: user.authProvider,

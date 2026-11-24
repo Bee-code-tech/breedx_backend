@@ -54,6 +54,14 @@ const userSchema = new Schema<IUser>(
       enum: ['user', 'admin'],
       default: 'user',
     },
+    // Partners are still students; this only opens the partner dashboard
+    isPartner: { type: Boolean, default: false, index: true },
+    partnerSince: { type: Date, default: null },
+    payoutDetails: {
+      type: { bank: String, accountName: String, accountNumber: String },
+      default: null,
+      _id: false,
+    },
     // Paid plans fall back to free once planExpiresAt passes
     plan: {
       type: String,

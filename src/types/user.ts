@@ -40,6 +40,11 @@ export interface IUser extends Document {
   referredBy?: Types.ObjectId | null;
   referralRewardedAt?: Date | null;
   role: UserRole;
+  /** Made a partner by an admin: earns commission on students they bring in. */
+  isPartner: boolean;
+  partnerSince?: Date | null;
+  /** Where partner commission is paid. */
+  payoutDetails?: { bank?: string; accountName?: string; accountNumber?: string } | null;
   plan: PlanId;
   planExpiresAt: Date | null;
   /** AI energy in the tank as of `aiEnergyAt`; it refills from there. Null means a full tank. */

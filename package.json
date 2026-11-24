@@ -10,7 +10,8 @@
     "type-check": "tsc --noEmit",
     "seed:spaces": "ts-node --project tsconfig.json src/scripts/seed-spaces.ts",
     "seed:schedule": "ts-node --project tsconfig.json src/scripts/seed-schedule.ts",
-    "ai:indexes": "ts-node --project tsconfig.json src/scripts/create-ai-indexes.ts"
+    "ai:indexes": "ts-node --project tsconfig.json src/scripts/create-ai-indexes.ts",
+    "make-admin": "ts-node --project tsconfig.json src/scripts/make-admin.ts"
   },
   "keywords": [],
   "author": "",

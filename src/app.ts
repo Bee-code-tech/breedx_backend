@@ -24,6 +24,8 @@ import progressRoutes from './routes/progress.routes';
 import billingRoutes from './routes/billing.routes';
 import referralRoutes from './routes/referral.routes';
 import notificationRoutes from './routes/notification.routes';
+import partnerRoutes from './routes/partner.routes';
+import adminRoutes from './routes/admin.routes';
 import tutorRoutes from './routes/tutor.routes';
 
 // Middleware imports
@@ -85,6 +87,8 @@ app.use('/api/v1/billing', billingRoutes);
 app.use('/api/v1/referrals', referralRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/tutor', tutorRoutes);
+app.use('/api/v1/partner', partnerRoutes);
+app.use('/api/v1/admin', adminRoutes);
 
 // ── Global error handler (must be last) ───────────────────────────────────────
 app.use(errorHandler);
