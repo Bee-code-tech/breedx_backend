@@ -233,7 +233,17 @@ const readScannedPages = async (
   };
 
   for (let i = 0; i < batches.length; i += SCAN_PARALLEL) {
-    await Promise.all(batches.slice(i, i + SCAN_PARALLEL).map(readBatch));
+    await Promise.all(
+      batches.slice(i, i + SCAN_PARALLEL).map((batch) =>
+        readBatch(batch).catch((error) => {
+          if (signal?.aborted) throw error;
+          // Those pages stay as they were (little or no text); the rest still count
+          console.error(`Reading scanned pages ${batch.join(', ')} failed:`, error);
+          done += batch.length;
+          onProgress(done, pageNumbers.length);
+        })
+      )
+    );
   }
   return { texts, tokens };
 };
@@ -258,11 +268,17 @@ const readPdf = async (
 
     let tokens = ZERO_TOKENS;
     if (scanned.length) {
-      const result = await readScannedPages(buffer, scanned, onScanProgress, signal);
-      result.texts.forEach((value, page) => {
-        if (value.length > pages[page - 1].length) pages[page - 1] = value;
-      });
-      tokens = result.tokens;
+      // Photo pages are a bonus: if reading them fails, the text pages still make the file usable
+      try {
+        const result = await readScannedPages(buffer, scanned, onScanProgress, signal);
+        result.texts.forEach((value, page) => {
+          if (value.length > pages[page - 1].length) pages[page - 1] = value;
+        });
+        tokens = result.tokens;
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        console.error(`Reading ${scanned.length} scanned page(s) failed; using the text pages:`, error);
+      }
     }
     return { unit: 'page', pages, outline, tokens, scanned: scanned.length };
   } finally {
