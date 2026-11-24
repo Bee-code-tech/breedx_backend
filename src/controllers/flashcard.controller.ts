@@ -5,7 +5,7 @@ import FlashcardDeck from '../models/flashcardDeck.model';
 import { AuthRequest } from '../types/auth';
 import { CARD_TAGS, CardTag, DIFFICULTIES, Difficulty, Flashcard, IFlashcardDeck, ReviewRating } from '../types/quiz';
 import { pickCards } from '../utils/ai/bank';
-import { readySources } from '../utils/ai/scope';
+import { readySources, unreadableMessage } from '../utils/ai/scope';
 import { recordActivity } from '../utils/activity';
 import { applyCardReview } from '../utils/mastery';
 import { sendError, sendSuccess } from '../utils/response';
@@ -159,10 +159,11 @@ export const generateDeck = async (req: AuthRequest, res: Response, next: NextFu
     stream = openStream(req, res);
     const live = stream;
     live.step('reading', 'Reading your materials…', { status: 'active' });
-    const sources = await readySources(live, userId, { fileIds, libraryIds });
+    const skipped: { name: string; reason: string }[] = [];
+    const sources = await readySources(live, userId, { fileIds, libraryIds }, skipped);
     if (live.closed) return;
     if (!sources.length) {
-      live.fail("None of these files could be read. Try a PDF, Word, PowerPoint or text file.");
+      live.fail(unreadableMessage(skipped, skipped.length > 0));
       return;
     }
     live.step('reading', `Read ${sources.length} file${sources.length === 1 ? '' : 's'}`, { status: 'done' });

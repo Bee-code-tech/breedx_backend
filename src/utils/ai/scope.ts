@@ -145,11 +145,24 @@ export const unitsOf = async (materialIds: string[]) =>
 export const readySources = async (
   stream: Stream,
   userId: string,
-  options: { libraryIds?: string[] | null; fileIds?: string[] | null; space?: SpaceScope | null }
+  options: { libraryIds?: string[] | null; fileIds?: string[] | null; space?: SpaceScope | null },
+  /** Filled with each file that couldn't be read, and why. */
+  skipped?: { name: string; reason: string }[]
 ): Promise<{ material: IMaterial; file: ScopeFile }[]> => {
   const scope = await resolveScope(userId, options);
   if (!scope.byMaterial.size) return [];
-  const ready = await prepareAll(stream, userId, toPrepare(scope));
+  const ready = await prepareAll(stream, userId, toPrepare(scope), skipped);
   const materials = await Material.find({ _id: { $in: [...ready] } });
   return materials.map((material) => ({ material, file: scope.byMaterial.get(String(material._id))! }));
+};
+
+/**
+ * Why nothing could be used: the files' own reasons when we have them (one
+ * file: its reason; several: the first), else a general line.
+ */
+export const unreadableMessage = (skipped: { name: string; reason: string }[], found: boolean) => {
+  if (!found) return "We couldn't find these files. They may still be uploading; try again in a moment.";
+  if (skipped.length === 1) return `${skipped[0].name}: ${skipped[0].reason}`;
+  if (skipped.length > 1) return `None of these files could be read. ${skipped[0].name}: ${skipped[0].reason}`;
+  return "None of these files could be read. Try a PDF, Word, PowerPoint or text file.";
 };

@@ -78,10 +78,39 @@ const readImage = async (
   return { unit: 'page', pages: [text], outline: [], tokens: result.tokens, scanned: 1 };
 };
 
-const extensionFor = (fileName: string, contentType: string) => {
+const KNOWN = new Set(['pdf', 'pptx', 'docx', 'png', 'jpg', 'jpeg', 'webp', 'heic', 'txt', 'md', 'doc', 'ppt']);
+
+/** What the bytes say the file is, whatever it's called. */
+const sniff = (buffer: Buffer, fileName: string): string => {
+  const head = buffer.subarray(0, 12);
+  if (head.subarray(0, 5).toString('latin1') === '%PDF-') return 'pdf';
+  if (head[0] === 0x89 && head.subarray(1, 4).toString('latin1') === 'PNG') return 'png';
+  if (head[0] === 0xff && head[1] === 0xd8) return 'jpg';
+  if (head.subarray(0, 4).toString('latin1') === 'RIFF' && head.subarray(8, 12).toString('latin1') === 'WEBP') return 'webp';
+  if (head.subarray(4, 12).toString('latin1').startsWith('ftyphei')) return 'heic';
+  // Word and PowerPoint files are zip archives; the parts inside say which
+  if (head[0] === 0x50 && head[1] === 0x4b) {
+    const listing = buffer.subarray(0, Math.min(buffer.length, 64 * 1024)).toString('latin1');
+    if (listing.includes('word/')) return 'docx';
+    if (listing.includes('ppt/')) return 'pptx';
+    const named = fileName.toLowerCase().split('.').pop();
+    if (named === 'docx' || named === 'pptx') return named;
+  }
+  return '';
+};
+
+/**
+ * The file's real type. A display name can have a stray dot ("CHM 101. Notes")
+ * or no extension at all, so the bytes come first, then a known extension in
+ * the name, then the content type.
+ */
+const extensionFor = (fileName: string, contentType: string, buffer?: Buffer) => {
+  const fromBytes = buffer ? sniff(buffer, fileName) : '';
+  if (fromBytes) return fromBytes;
   const parts = fileName.toLowerCase().split('.');
   const fromName = parts.length > 1 ? parts.pop() ?? '' : '';
-  return fromName || CONTENT_TYPES[contentType] || '';
+  if (KNOWN.has(fromName)) return fromName;
+  return CONTENT_TYPES[contentType] || fromName || '';
 };
 
 const tidy = (text: string) =>
@@ -279,7 +308,7 @@ export const extractText = async (
   onScanProgress: (done: number, total: number) => void,
   signal?: AbortSignal
 ): Promise<ExtractedText> => {
-  const extension = extensionFor(fileName, contentType);
+  const extension = extensionFor(fileName, contentType, buffer);
   switch (extension) {
     case 'pdf':
       return readPdf(buffer, onScanProgress, signal);

@@ -67,8 +67,35 @@ export const adminOverview = async (_req: AuthRequest, res: Response, next: Next
       if (row) row.payments++;
     }
 
+    // Where students are: countries and schools, the biggest first
+    const [byCountry, bySchool, new30d, active30d, schoolKnown] = await Promise.all([
+      User.aggregate<{ _id: string | null; count: number }>([
+        { $group: { _id: '$country', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 8 },
+      ]),
+      User.aggregate<{ _id: string; count: number }>([
+        { $match: { 'academicProfile.school': { $nin: [null, ''] } } },
+        { $group: { _id: '$academicProfile.school', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 8 },
+      ]),
+      User.countDocuments({ createdAt: { $gte: monthAgo } }),
+      Session.distinct('user', { lastSeenAt: { $gte: monthAgo } }),
+      User.countDocuments({ 'academicProfile.school': { $nin: [null, ''] } }),
+    ]);
+
     sendSuccess(res, {
-      users: { total, new7d, active7d: activeIds.length },
+      users: {
+        total,
+        new7d,
+        new30d,
+        active7d: activeIds.length,
+        active30d: active30d.length,
+        countries: byCountry.map((row) => ({ country: row._id || '', count: row.count })),
+        schools: bySchool.map((row) => ({ school: row._id, count: row.count })),
+        withSchool: schoolKnown,
+      },
       paid: { count: paidUsers.length, byPlan },
       revenue: {
         month: await revenue(startOfMonth(), now),
@@ -100,7 +127,7 @@ export const adminUsers = async (req: AuthRequest, res: Response, next: NextFunc
 
     const [users, total] = await Promise.all([
       User.find(filter)
-        .select('firstName lastName email avatar role isPartner plan planExpiresAt createdAt country')
+        .select('firstName lastName email avatar role isPartner plan planExpiresAt createdAt country academicProfile.school academicProfile.level onboardingStatus')
         .sort({ createdAt: -1 })
         .skip((page - 1) * PAGE)
         .limit(PAGE)
@@ -120,6 +147,9 @@ export const adminUsers = async (req: AuthRequest, res: Response, next: NextFunc
         email: user.email,
         avatarUrl: user.avatar ?? null,
         country: user.country,
+        school: user.academicProfile?.school ?? null,
+        level: user.academicProfile?.level ?? null,
+        onboarded: user.onboardingStatus === 'complete',
         role: user.role,
         isPartner: Boolean(user.isPartner),
         plan: activePlan(user),
@@ -196,6 +226,120 @@ export const adminPartners = async (_req: AuthRequest, res: Response, next: Next
       }),
     );
     sendSuccess(res, { items });
+  } catch (error) {
+    next(error);
+  }
+};
+
+type Count = { key: string; count: number };
+
+/** Students grouped by one profile field, the biggest first. */
+const groupBy = async (field: string, limit = 10, unwind = false): Promise<Count[]> => {
+  const path = '$' + field;
+  const rows = await User.aggregate<{ _id: string; count: number }>([
+    ...(unwind ? [{ $unwind: path }] : []),
+    { $match: { [field]: { $nin: [null, ''] } } },
+    { $group: { _id: path, count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: limit },
+  ]);
+  return rows.map((row) => ({ key: String(row._id), count: row.count }));
+};
+
+const WEEK_MS = 7 * DAY_MS;
+
+// GET /admin/users/insights: who our students are and how they use BreedX
+export const adminUserInsights = async (_req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const now = Date.now();
+    const weekAgo = new Date(now - WEEK_MS);
+    const monthAgo = new Date(now - 30 * DAY_MS);
+    const twoMonthsAgo = new Date(now - 60 * DAY_MS);
+    // Twelve whole weeks, starting on the Monday 11 weeks back
+    const start = new Date(now);
+    start.setUTCHours(0, 0, 0, 0);
+    start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7) - 11 * 7);
+
+    const [
+      total,
+      verified,
+      onboarded,
+      google,
+      new30d,
+      newPrev30d,
+      activeWeek,
+      activeMonth,
+      everSeen,
+      recent,
+      devices,
+      levels,
+      programmes,
+      faculties,
+      interests,
+      approach,
+      time,
+      preference,
+      planning,
+      barriers,
+      styled,
+    ] = await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ isVerified: true }),
+      User.countDocuments({ onboardingStatus: 'complete' }),
+      User.countDocuments({ authProvider: 'google' }),
+      User.countDocuments({ createdAt: { $gte: monthAgo } }),
+      User.countDocuments({ createdAt: { $gte: twoMonthsAgo, $lt: monthAgo } }),
+      Session.distinct('user', { lastSeenAt: { $gte: weekAgo } }),
+      Session.distinct('user', { lastSeenAt: { $gte: monthAgo } }),
+      Session.distinct('user'),
+      User.find({ createdAt: { $gte: start } }).select('createdAt').lean(),
+      // The device each student used most recently in the last 30 days
+      Session.aggregate<{ _id: string | null; count: number }>([
+        { $match: { lastSeenAt: { $gte: monthAgo } } },
+        { $sort: { lastSeenAt: -1 } },
+        { $group: { _id: '$user', device: { $first: '$deviceName' } } },
+        { $group: { _id: { $arrayElemAt: [{ $split: ['$device', ' on '] }, 1] }, count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ]),
+      groupBy('academicProfile.level', 8),
+      groupBy('academicProfile.programme', 6),
+      groupBy('academicProfile.faculty', 6),
+      groupBy('academicProfile.interests', 8, true),
+      groupBy('learningStyle.approach', 6),
+      groupBy('learningStyle.time', 4),
+      groupBy('learningStyle.preference', 5),
+      groupBy('learningStyle.planning', 5),
+      groupBy('learningStyle.barriers', 6, true),
+      User.countDocuments({ 'learningStyle.approach': { $nin: [null, ''] } }),
+    ]);
+
+    const weekly = Array.from({ length: 12 }, (_, index) => ({
+      week: new Date(start.getTime() + index * WEEK_MS).toISOString().slice(0, 10),
+      signups: 0,
+    }));
+    for (const user of recent) {
+      const index = Math.floor((user.createdAt.getTime() - start.getTime()) / WEEK_MS);
+      if (weekly[index]) weekly[index].signups++;
+    }
+
+    sendSuccess(res, {
+      total,
+      verified,
+      onboarded,
+      google,
+      new30d,
+      newPrev30d,
+      activity: {
+        week: activeWeek.length,
+        month: activeMonth.length,
+        // Signed in before, but not in the last 30 days
+        lapsed: Math.max(0, everSeen.length - activeMonth.length),
+      },
+      weekly,
+      devices: devices.map((row) => ({ key: row._id || 'unknown', count: row.count })),
+      academic: { levels, programmes, faculties, interests },
+      style: { answered: styled, approach, time, preference, planning, barriers },
+    });
   } catch (error) {
     next(error);
   }

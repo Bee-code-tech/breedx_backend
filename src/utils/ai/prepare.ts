@@ -28,7 +28,8 @@ const progressText = (name: string, progress: ProcessingProgress, unit: PageUnit
 export const prepareAll = async (
   stream: Stream,
   userId: string,
-  files: { material: string; name: string; status: IMaterial['status'] | undefined }[]
+  files: { material: string; name: string; status: IMaterial['status'] | undefined }[],
+  skipped?: { name: string; reason: string }[]
 ): Promise<Set<string>> => {
   const ready = new Set(files.filter((file) => file.status === 'ready').map((file) => file.material));
   const pending = files.filter((file) => file.status !== 'ready');
@@ -48,6 +49,7 @@ export const prepareAll = async (
     } catch (error) {
       const message = error instanceof MaterialNotReadyError ? error.message : "We couldn't read this file.";
       stream.step(stepId, `Skipped ${file.name}: ${message}`, { status: 'skipped' });
+      skipped?.push({ name: file.name, reason: message });
     }
   };
 

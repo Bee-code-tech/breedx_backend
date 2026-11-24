@@ -20,7 +20,7 @@ import {
 import { startOfToday } from '../utils/ai/energy';
 import { pickQuestions, Slot, topicsOf } from '../utils/ai/bank';
 import LibraryFile from '../models/libraryFile.model';
-import { readySources } from '../utils/ai/scope';
+import { readySources, unreadableMessage } from '../utils/ai/scope';
 import { planFor } from '../utils/plan';
 import { recordActivity } from '../utils/activity';
 import { applyCourseResult, applyQuizResult } from '../utils/mastery';
@@ -493,14 +493,15 @@ export const generateQuiz = async (req: AuthRequest, res: Response, next: NextFu
     // Eight steps, each with the real numbers behind it (`data`), so the
     // generating screen can say what's happening in the student's language.
     stream.step('reading', 'Reading your materials…', { status: 'active' });
+    const skipped: { name: string; reason: string }[] = [];
     const sources = await readySources(stream, userId, {
       fileIds: sourceFileIds,
       libraryIds: topicPicks ? null : libraryIds,
       space: topicPicks ? null : space,
-    });
+    }, skipped);
     if (stream.closed) return;
     if (!sources.length) {
-      stream.fail("None of these files could be read. Try a PDF, Word, PowerPoint or text file.");
+      stream.fail(unreadableMessage(skipped, skipped.length > 0));
       return;
     }
     const pages = sources.reduce((sum, source) => sum + (source.material.pageCount ?? 0), 0);

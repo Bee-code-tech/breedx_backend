@@ -190,7 +190,9 @@ export const prepareMaterial = async (
   const current = await Material.findById(materialId);
   if (!current) throw new MaterialNotReadyError('FAILED', 'File not found');
   if (current.status === 'ready') return current;
-  if (current.status === 'failed' && current.error !== 'FAILED') {
+  // "No text" is final; an "unsupported" verdict may have come from a misleading
+  // file name, so those are tried again
+  if (current.status === 'failed' && current.error === 'EMPTY') {
     throw new MaterialNotReadyError(current.error as 'UNSUPPORTED' | 'EMPTY', messageFor(current.error));
   }
 
